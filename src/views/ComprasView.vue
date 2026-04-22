@@ -5,13 +5,13 @@ import { useComprasStore }   from '@/stores/useComprasStore'
 import { useProductosStore } from '@/stores/useProductosStore'
 import { useProveedoresStore } from '@/stores/useProveedoresStore'
 import { useAuthStore }       from '@/stores/useAuthStore'
-import { updateDoc, doc }    from 'firebase/firestore'
-import { db }                from '@/firebase/firebaseConfig'
+import { useSyncQueueStore, esErrorRecuperable } from '@/stores/useSyncQueueStore'
 
 const comprasStore   = useComprasStore()
 const productosStore = useProductosStore()
 const proveedoresStore = useProveedoresStore()
 const authStore      = useAuthStore()
+const syncQueueStore = useSyncQueueStore()
 
 // ─── Filtro por período ───────────────────────────────────────────────────────
 const hoy     = new Date()
@@ -44,34 +44,40 @@ function siguienteMes() {
 }
 
 // ─── Suscripción dinámica ─────────────────────────────────────────────────────
-let unsubProductos, unsubCompras, unsubProv
+let unsubProductos, unsubProv
 const loadingCompras = ref(false)
 
-function resuscribir() {
-  unsubCompras?.()
+async function cargarPeriodo(options = {}) {
   loadingCompras.value = true
   const inicio = new Date(periodo.value.year, periodo.value.month - 1, 1)
   const fin    = new Date(periodo.value.year, periodo.value.month, 0, 23, 59, 59, 999)
-  unsubCompras = comprasStore.subscribeByPeriodo(inicio, fin, () => {
+  try {
+    await comprasStore.initPeriodo(inicio, fin, options)
+  } finally {
     loadingCompras.value = false
-  })
+  }
 }
 
 onMounted(() => {
   unsubProductos = productosStore.subscribe()
   unsubProv = proveedoresStore.subscribeProveedores()
-  resuscribir()
+  cargarPeriodo({ force: true })
   window.addEventListener('keydown', onKeydownModalCompra, true)
 })
 
-watch(periodo, resuscribir, { deep: true })
+watch(periodo, () => {
+  cargarPeriodo({ force: true })
+}, { deep: true })
 
 onUnmounted(() => {
   unsubProductos?.()
-  unsubCompras?.()
   unsubProv?.()
   window.removeEventListener('keydown', onKeydownModalCompra, true)
 })
+
+async function cargarMasCompras() {
+  await comprasStore.loadMorePeriodo()
+}
 
 // ─── Formulario nueva compra ──────────────────────────────────────────────────
 const proveedoresOpciones = computed(() => {
@@ -83,6 +89,23 @@ const proveedoresOpciones = computed(() => {
 
   if (!unicos.includes('OTRO')) unicos.push('OTRO')
   return unicos.length ? unicos : ['OTRO']
+})
+
+const proveedoresOpcionesEdicion = computed(() => {
+  const base = new Set(
+    proveedoresStore.proveedores
+      .map(p => String(p.nombre || '').trim().toUpperCase())
+      .filter(Boolean),
+  )
+
+  const actual = String(formEditarCompra.value.proveedor || '').trim().toUpperCase()
+  if (actual && actual !== 'OTRO') base.add(actual)
+
+  const ordenados = [...base]
+    .filter(p => p !== 'DESCONOCIDO')
+    .sort((a, b) => a.localeCompare(b, 'es'))
+
+  return ['DESCONOCIDO', ...ordenados, 'OTRO']
 })
 
 // ─── Tab mobile ───────────────────────────────────────────────────────────────
@@ -117,6 +140,7 @@ function seleccionarProducto(prod) {
 
 const guardando  = ref(false)
 const exitoGuard = ref(false)
+const enColaGuard = ref(false)
 const errorGuard = ref('')
 
 const puedeGuardar = computed(() =>
@@ -129,28 +153,22 @@ async function guardarCompra() {
   if (!puedeGuardar.value || guardando.value) return
   guardando.value = true
   errorGuard.value = ''
+  enColaGuard.value = false
   try {
-    await comprasStore.registrarCompra({
+    const productoCoincidente = productosStore.productos.find(
+      p => p.nombre.toUpperCase() === form.value.nombre.trim().toUpperCase(),
+    )
+    const compraData = {
       nombre:        form.value.nombre,
       cantidad:      Number(form.value.cantidad),
       presentacion:  form.value.presentacion,
       precio_compra: Number(form.value.precio_compra),
       precio_venta:  Number(form.value.precio_venta) || 0,
       proveedor:     form.value.proveedor,
-    })
-
-    // Actualizar precio en el producto si hay match
-    if (Number(form.value.precio_venta) > 0) {
-      const prod = productosStore.productos.find(
-        p => p.nombre.toUpperCase() === form.value.nombre.trim().toUpperCase(),
-      )
-      if (prod) {
-        await updateDoc(doc(db, 'productos', prod.id), {
-          precio_compra: Number(form.value.precio_compra),
-          precio_venta:  Number(form.value.precio_venta),
-        })
-      }
+      producto_id:   productoCoincidente?.id || null,
     }
+
+    await comprasStore.registrarCompra(compraData)
 
     // Reset form
     form.value = { nombre: '', cantidad: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
@@ -158,7 +176,26 @@ async function guardarCompra() {
     exitoGuard.value = true
     setTimeout(() => { exitoGuard.value = false }, 2500)
   } catch (e) {
-    errorGuard.value = e.message || 'Error al guardar'
+    if (esErrorRecuperable(e)) {
+      const productoCoincidente = productosStore.productos.find(
+        p => p.nombre.toUpperCase() === form.value.nombre.trim().toUpperCase(),
+      )
+      syncQueueStore.addCompra({
+        nombre:        form.value.nombre,
+        cantidad:      Number(form.value.cantidad),
+        presentacion:  form.value.presentacion,
+        precio_compra: Number(form.value.precio_compra),
+        precio_venta:  Number(form.value.precio_venta) || 0,
+        proveedor:     form.value.proveedor,
+        producto_id:   productoCoincidente?.id || null,
+      })
+      form.value = { nombre: '', cantidad: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
+      busquedaProducto.value = ''
+      enColaGuard.value = true
+      setTimeout(() => { enColaGuard.value = false }, 6000)
+    } else {
+      errorGuard.value = e.message || 'Error al guardar'
+    }
   } finally {
     guardando.value = false
   }
@@ -167,15 +204,27 @@ async function guardarCompra() {
 // ─── Editar / Eliminar compra ─────────────────────────────────────────────────
 const modalEditarCompraAbierto = ref(false)
 const compraEditando           = ref(null)
-const formEditarCompra         = ref({ precio_compra: 0, precio_venta: 0, cantidad: 1 })
+const formEditarCompra         = ref({
+  nombre: '',
+  cantidad: 1,
+  presentacion: '',
+  precio_compra: 0,
+  precio_venta: 0,
+  proveedor: '',
+  proveedor_otro: '',
+})
 const guardandoEdicion         = ref(false)
 
 function abrirEditarCompra(compra) {
   compraEditando.value = compra
   formEditarCompra.value = {
+    nombre:        compra.nombre        ?? '',
+    cantidad:      compra.cantidad      ?? 1,
+    presentacion:  compra.presentacion  ?? '',
     precio_compra: compra.precio_compra ?? 0,
     precio_venta:  compra.precio_venta  ?? 0,
-    cantidad:      compra.cantidad      ?? 1,
+    proveedor:     String(compra.proveedor || '').trim().toUpperCase() || 'DESCONOCIDO',
+    proveedor_otro: '',
   }
   modalEditarCompraAbierto.value = true
 }
@@ -196,10 +245,18 @@ async function guardarEdicionCompra() {
   if (!compraEditando.value || guardandoEdicion.value) return
   guardandoEdicion.value = true
   try {
+    const proveedorElegido = String(formEditarCompra.value.proveedor || '').trim().toUpperCase()
+    const proveedorFinal = proveedorElegido === 'OTRO'
+      ? String(formEditarCompra.value.proveedor_otro || '').trim().toUpperCase()
+      : proveedorElegido
+
     const datos = {
+      nombre:        String(formEditarCompra.value.nombre || compraEditando.value.nombre || '').trim().toUpperCase(),
+      cantidad:      Number(formEditarCompra.value.cantidad),
+      presentacion:  String(formEditarCompra.value.presentacion || '').trim(),
       precio_compra: Number(formEditarCompra.value.precio_compra),
       precio_venta:  Number(formEditarCompra.value.precio_venta),
-      cantidad:      Number(formEditarCompra.value.cantidad),
+      proveedor:     proveedorFinal || 'DESCONOCIDO',
       total:         Number(formEditarCompra.value.precio_compra) * Number(formEditarCompra.value.cantidad),
     }
     await comprasStore.actualizarCompra(compraEditando.value.id, datos)
@@ -348,6 +405,11 @@ async function eliminarCompra(compra) {
             ✓ Compra registrada
           </div>
 
+          <!-- Guardado en cola offline -->
+          <div v-else-if="enColaGuard" class="text-center text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-3 px-3">
+            ⏳ Sin acceso — compra guardada para sincronizar
+          </div>
+
           <!-- Botón guardar -->
           <button
             v-else
@@ -456,6 +518,17 @@ async function eliminarCompra(compra) {
             </button>
           </div>
         </div>
+
+        <div class="py-2">
+          <button
+            v-if="comprasStore.hasMorePeriodo"
+            @click="cargarMasCompras"
+            :disabled="comprasStore.loadingMorePeriodo"
+            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {{ comprasStore.loadingMorePeriodo ? 'Cargando más…' : 'Cargar más compras' }}
+          </button>
+        </div>
         </div><!-- fin lista scrolleable -->
 
       </div>
@@ -470,43 +543,92 @@ async function eliminarCompra(compra) {
       @click.self="cerrarEditarCompra"
       @keydown.esc.prevent.stop="cerrarEditarCompra"
     >
-      <div class="bg-white w-full max-w-sm rounded-xl p-5 space-y-4 shadow-xl">
-        <div class="flex items-center justify-between">
+      <div class="bg-white w-full max-w-md rounded-xl shadow-xl flex flex-col" style="max-height: min(90vh, 640px)">
+
+        <!-- Header fijo -->
+        <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
           <h3 class="text-base font-bold text-gray-800">Editar compra</h3>
           <button
             type="button"
             @click="cerrarEditarCompra"
             aria-label="Cerrar modal"
             class="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-          >
-            ✕
-          </button>
+          >✕</button>
         </div>
-        <p class="text-sm text-gray-500 font-medium -mt-2">{{ compraEditando?.nombre }}</p>
 
-        <div class="space-y-3">
+        <!-- Contenido scrolleable -->
+        <div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+
+          <!-- Producto -->
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
-            <input v-model.number="formEditarCompra.cantidad" type="number" min="1"
-              class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            <label class="block text-xs font-medium text-gray-500 mb-1">Producto</label>
+            <input v-model="formEditarCompra.nombre" type="text" placeholder="Nombre del producto"
+              class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-green-400" />
           </div>
+
+          <!-- Cantidad + Presentación -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
+              <input v-model.number="formEditarCompra.cantidad" type="number" min="1"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Presentación</label>
+              <input v-model="formEditarCompra.presentacion" type="text" placeholder="ej: 20 KG"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            </div>
+          </div>
+
+          <!-- Precio compra + Precio venta -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Precio compra $</label>
+              <input v-model.number="formEditarCompra.precio_compra" type="number" min="0"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Precio venta $</label>
+              <input v-model.number="formEditarCompra.precio_venta" type="number" min="0"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            </div>
+          </div>
+
+          <!-- Proveedor -->
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Precio compra $</label>
-            <input v-model.number="formEditarCompra.precio_compra" type="number" min="0"
-              class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            <label class="block text-xs font-medium text-gray-500 mb-1">Proveedor</label>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="prov in proveedoresOpcionesEdicion"
+                :key="prov"
+                @click="formEditarCompra.proveedor = prov; if (prov !== 'OTRO') formEditarCompra.proveedor_otro = ''"
+                :class="[
+                  'px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors',
+                  formEditarCompra.proveedor === prov
+                    ? 'bg-green-500 text-white border-green-500'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-300',
+                ]"
+              >{{ prov }}</button>
+            </div>
+            <input
+              v-if="formEditarCompra.proveedor === 'OTRO'"
+              v-model="formEditarCompra.proveedor_otro"
+              type="text"
+              placeholder="Escribir proveedor"
+              class="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-green-400"
+            />
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Precio venta $</label>
-            <input v-model.number="formEditarCompra.precio_venta" type="number" min="0"
-              class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-          </div>
+
+          <!-- Total -->
           <div class="bg-gray-50 rounded-lg px-3 py-2 flex justify-between text-sm">
             <span class="text-gray-500">Total</span>
             <span class="font-bold text-gray-900">${{ (formEditarCompra.precio_compra * formEditarCompra.cantidad).toLocaleString('es-AR') }}</span>
           </div>
+
         </div>
 
-        <div class="flex gap-2 pt-1">
+        <!-- Botones fijos abajo -->
+        <div class="flex gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
           <button @click="cerrarEditarCompra"
             class="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">
             ↩️ Cancelar

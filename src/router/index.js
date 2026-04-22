@@ -49,6 +49,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/metricas',
+    name: 'Metricas',
+    component: () => import('@/views/MetricasLecturaView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
     // Catch-all: redirige a ventas
     path: '/:pathMatch(.*)*',
     redirect: '/ventas',

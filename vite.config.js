@@ -16,21 +16,21 @@ export default defineConfig({
         name: 'Molly Petshop',
         short_name: 'Molly',
         description: 'Sistema de gestión - Molly Petshop',
-        theme_color: '#22c55e',
-        background_color: '#f0fdf4',
+        theme_color: '#62ef4f',
+        background_color: '#62ef4f',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         // Cada build genera un nuevo SW que reemplaza el anterior inmediatamente
         skipWaiting: true,
         clientsClaim: true,
+        cleanupOutdatedCaches: true,
         cacheId: buildCacheId,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [

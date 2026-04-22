@@ -14,6 +14,7 @@ onUnmounted(() => unsubProv?.())
 const modalAbierto = ref(false)
 const form = ref({ nombre: '', contacto: '', web_instagram: '' })
 const busqueda = ref('')
+const vistaMobile = ref('card')
 
 const editandoId = ref('')
 const formEdicion = ref({ contacto: '', web_instagram: '' })
@@ -78,14 +79,10 @@ async function guardar() {
     <NavBar />
 
     <main class="flex-1 max-w-6xl mx-auto w-full px-4 py-4 md:py-5">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div>
-          <h1 class="text-xl font-bold text-gray-800">Proveedores</h1>
-          <p class="text-sm text-gray-400">{{ proveedoresFiltrados.length }} proveedores</p>
-        </div>
+      <div class="flex justify-end mb-4">
         <button
           @click="modalAbierto = true"
-          class="bg-green-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-green-600 transition-colors"
+          class="hidden md:inline-flex bg-green-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-green-600 transition-colors"
         >
           + Nuevo
         </button>
@@ -100,7 +97,137 @@ async function guardar() {
         />
       </div>
 
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="md:hidden mb-3 flex items-center justify-between gap-2">
+        <div class="inline-flex p-1 rounded-xl bg-gray-100 border border-gray-200">
+          <button
+            @click="vistaMobile = 'card'"
+            :class="[
+              'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+              vistaMobile === 'card' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500',
+            ]"
+          >
+            Card
+          </button>
+          <button
+            @click="vistaMobile = 'tabla'"
+            :class="[
+              'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+              vistaMobile === 'tabla' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500',
+            ]"
+          >
+            Tabla
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 whitespace-nowrap">{{ proveedoresFiltrados.length }} proveedores</p>
+        <button
+          @click="modalAbierto = true"
+          class="bg-green-500 text-white text-sm font-semibold px-3.5 py-2 rounded-xl hover:bg-green-600 transition-colors"
+        >
+          + Nuevo
+        </button>
+      </div>
+
+      <div
+        :class="[
+          'md:hidden space-y-3',
+          vistaMobile === 'card' ? 'block' : 'hidden',
+        ]"
+      >
+        <div
+          v-for="prov in proveedoresFiltrados"
+          :key="prov.id"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4"
+        >
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <h3 class="text-base font-bold text-gray-800 break-words">{{ prov.nombre }}</h3>
+            <span
+              class="text-sm font-bold whitespace-nowrap"
+              :class="prov.saldo_pendiente > 0 ? 'text-red-600' : 'text-gray-400'"
+            >
+              ${{ (prov.saldo_pendiente ?? 0).toLocaleString('es-AR') }}
+            </span>
+          </div>
+
+          <div class="space-y-2 text-sm">
+            <div>
+              <p class="text-xs text-gray-400 mb-1">Contacto</p>
+              <input
+                v-if="editandoId === prov.id"
+                v-model="formEdicion.contacto"
+                type="text"
+                class="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                placeholder="Contacto"
+              />
+              <p v-else class="text-gray-700">{{ prov.contacto || '—' }}</p>
+            </div>
+
+            <div>
+              <p class="text-xs text-gray-400 mb-1">Web / Instagram</p>
+              <input
+                v-if="editandoId === prov.id"
+                v-model="formEdicion.web_instagram"
+                type="text"
+                class="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                placeholder="@usuario o URL"
+              />
+              <template v-else>
+                <a
+                  v-if="linkProveedor(prov.web_instagram)"
+                  :href="linkProveedor(prov.web_instagram)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-green-700 hover:text-green-800 hover:underline break-all"
+                >
+                  {{ prov.web_instagram }}
+                </a>
+                <p v-else class="text-gray-700">{{ prov.web_instagram || '—' }}</p>
+              </template>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-3 mt-3">
+            <button
+              v-if="editandoId !== prov.id"
+              @click="iniciarEdicion(prov)"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 transition-colors"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a2.1 2.1 0 113 2.972L8.57 17.752 4 19l1.248-4.57L16.862 3.487z" />
+              </svg>
+              Editar
+            </button>
+            <template v-else>
+              <button
+                @click="guardarEdicion(prov.id)"
+                class="text-xs text-green-600 hover:text-green-700 font-semibold transition-colors"
+              >
+                Guardar
+              </button>
+              <button
+                @click="cancelarEdicion"
+                class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Cancelar
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div
+          v-if="proveedoresFiltrados.length === 0"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-8 text-center text-sm text-gray-400"
+        >
+          Sin proveedores para la búsqueda actual
+        </div>
+      </div>
+
+      <div
+        :class="[
+          'bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden',
+          vistaMobile === 'tabla' ? 'block' : 'hidden',
+          'md:block',
+        ]"
+      >
         <div class="max-h-[calc(100vh-200px)] overflow-auto">
           <table class="w-full text-sm min-w-[880px]">
             <thead class="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
@@ -156,8 +283,11 @@ async function guardar() {
                     <button
                       v-if="editandoId !== prov.id"
                       @click="iniciarEdicion(prov)"
-                      class="text-xs text-gray-500 hover:text-gray-800 transition-colors"
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 transition-colors"
                     >
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a2.1 2.1 0 113 2.972L8.57 17.752 4 19l1.248-4.57L16.862 3.487z" />
+                      </svg>
                       Editar
                     </button>
                     <template v-else>

@@ -1,16 +1,21 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useVentasStore }    from '@/stores/useVentasStore'
-import { useProductosStore } from '@/stores/useProductosStore'
-import { METODOS_PAGO }      from '@/firebase/constants'
+import { useVentasStore }      from '@/stores/useVentasStore'
+import { useProductosStore }   from '@/stores/useProductosStore'
+import { useAuthStore }        from '@/stores/useAuthStore'
+import { useSyncQueueStore, esErrorRecuperable } from '@/stores/useSyncQueueStore'
+import { METODOS_PAGO }        from '@/firebase/constants'
 
 const ventasStore    = useVentasStore()
 const productosStore = useProductosStore()
+const authStore      = useAuthStore()
+const syncQueueStore = useSyncQueueStore()
 
-const busqueda    = ref('')
-const confirmando = ref(false)
-const exito       = ref(false)
-const errorMsg    = ref('')
+const busqueda      = ref('')
+const confirmando   = ref(false)
+const exito         = ref(false)
+const errorMsg      = ref('')
+const enCola        = ref(false)
 
 // ─── Filtro de productos ────────────────────────────────────────────────────
 const productosFiltrados = computed(() => {
@@ -104,16 +109,46 @@ function cancelarModal() {
 }
 
 // ─── Confirmar venta ────────────────────────────────────────────────────────
+function mensajeErrorAmigable(e) {
+  const msg = (e?.message || '').toLowerCase()
+  const code = (e?.code || '').toLowerCase()
+  if (msg.includes('quota') || msg.includes('resource') || code.includes('resource-exhausted')) {
+    return 'Límite diario de operaciones alcanzado. Intentá en unos minutos o contactá al administrador.'
+  }
+  if (msg.includes('stock insuficiente')) return e.message
+  if (msg.includes('carrito')) return 'El carrito está vacío'
+  if (msg.includes('offline') || code.includes('unavailable')) {
+    return 'Sin conexión. Verificá internet e intentá de nuevo.'
+  }
+  return 'Error al registrar la venta. Intentá de nuevo.'
+}
+
 async function confirmarVenta() {
   if (!puedeConfirmar.value) return
   confirmando.value = true
   errorMsg.value    = ''
+  enCola.value      = false
   try {
     await ventasStore.registrarVenta()
     exito.value = true
     setTimeout(() => { exito.value = false }, 2500)
   } catch (e) {
-    errorMsg.value = e.message || 'Error al registrar la venta'
+    if (esErrorRecuperable(e)) {
+      // Guardar en cola local para sincronizar cuando vuelva el acceso
+      syncQueueStore.addVenta({
+        items:          ventasStore.carrito.map(i => ({ ...i })),
+        metodo_pago:    ventasStore.metodoPago,
+        subtotal:       ventasStore.subtotal,
+        recargo_metodo: ventasStore.recargoMetodo,
+        total:          ventasStore.total,
+        id_usuario:     authStore.user?.uid || null,
+      })
+      ventasStore.limpiarCarrito()
+      enCola.value = true
+      setTimeout(() => { enCola.value = false }, 6000)
+    } else {
+      errorMsg.value = mensajeErrorAmigable(e)
+    }
   } finally {
     confirmando.value = false
   }
@@ -241,9 +276,17 @@ async function confirmarVenta() {
         ✓ Venta registrada
       </div>
 
+      <!-- Guardado en cola offline -->
+      <div
+        v-if="enCola"
+        class="text-center text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-3"
+      >
+        ⏳ Sin acceso — venta guardada para sincronizar
+      </div>
+
       <!-- Botón confirmar -->
       <button
-        v-else
+        v-else-if="!enCola"
         @click="confirmarVenta"
         :disabled="!puedeConfirmar"
         class="w-full py-3.5 bg-green-500 text-white font-bold rounded-xl text-sm disabled:opacity-50 active:bg-green-600 transition-colors"

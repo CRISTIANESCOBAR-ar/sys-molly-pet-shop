@@ -2,10 +2,12 @@
 import { ref, computed } from 'vue'
 import { useAuthStore }     from '@/stores/useAuthStore'
 import { useProductosStore } from '@/stores/useProductosStore'
+import { useSyncQueueStore } from '@/stores/useSyncQueueStore'
 import { useRouter, useRoute } from 'vue-router'
 
 const authStore      = useAuthStore()
 const productosStore = useProductosStore()
+const syncQueueStore = useSyncQueueStore()
 const router         = useRouter()
 const route          = useRoute()
 
@@ -14,6 +16,7 @@ const menuAbierto = ref(false)
 const todosItems = [
   { path: '/ventas',        label: 'Ventas',      icon: '🛒', admin: false },
   { path: '/graficos',      label: 'Graficos',    icon: '📈', admin: false },
+  { path: '/metricas',      label: 'Metricas',    icon: '📊', admin: true  },
   { path: '/stock',         label: 'Stock',       icon: '📦', admin: false },
   { path: '/proveedores',   label: 'Proveedores', icon: '🏭', admin: true  },
   { path: '/compras',       label: 'Compras',     icon: '🛍️', admin: true  },
@@ -78,6 +81,19 @@ async function handleLogout() {
           to="/stock"
           class="flex items-center gap-1 bg-red-50 text-red-600 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
         >⚠ {{ productosStore.productosConStockBajo.length }} sin stock</router-link>
+        <!-- Badge cola offline -->
+        <button
+          v-if="syncQueueStore.isSyncing || syncQueueStore.pendingCount > 0"
+          @click="syncQueueStore.processQueue()"
+          :title="syncQueueStore.isSyncing ? 'Sincronizando...' : `${syncQueueStore.pendingCount} operación(es) guardada(s) sin enviar. Tap para reintentar.`"
+          :class="[
+            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors',
+            syncQueueStore.isSyncing ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700',
+          ]"
+        >
+          <span v-if="syncQueueStore.isSyncing">↻ Sincronizando</span>
+          <span v-else>⏳ {{ syncQueueStore.pendingCount }} pendiente{{ syncQueueStore.pendingCount > 1 ? 's' : '' }}</span>
+        </button>
         <span class="text-xs text-gray-400">
           {{ authStore.user?.email }}
           <span class="ml-1 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-xs">
@@ -97,6 +113,19 @@ async function handleLogout() {
           @click="menuAbierto = false"
           class="flex items-center gap-1 bg-red-50 text-red-600 text-sm font-semibold px-2.5 py-1.5 rounded-lg"
         >⚠ {{ productosStore.productosConStockBajo.length }}</router-link>
+
+        <!-- Badge cola offline (mobile) -->
+        <button
+          v-if="syncQueueStore.isSyncing || syncQueueStore.pendingCount > 0"
+          @click="syncQueueStore.processQueue()"
+          :class="[
+            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg',
+            syncQueueStore.isSyncing ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700',
+          ]"
+        >
+          <span v-if="syncQueueStore.isSyncing">↻</span>
+          <span v-else>⏳ {{ syncQueueStore.pendingCount }}</span>
+        </button>
 
         <button
           @click="menuAbierto = !menuAbierto"

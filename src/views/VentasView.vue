@@ -63,25 +63,24 @@ const modalEditarAbierto = ref(false)
 const guardandoEdicion = ref(false)
 const ventaEditandoId = ref('')
 const ventaEditando = ref(null)
-const formEdicion = ref({ metodo_pago: 'efectivo', total: 0, cantidad: 1 })
+const formEdicion = ref({ nombre: '', precio: 0, metodo_pago: 'efectivo', cantidad: 1, total: 0 })
 
 function abrirEditarVenta(venta) {
   ventaEditandoId.value = venta.id
   ventaEditando.value = venta
   const primerItem = venta.items?.[0]
   formEdicion.value = {
+    nombre:      String(primerItem?.nombre ?? '').trim(),
+    precio:      Number(primerItem?.precio ?? 0),
     metodo_pago: venta.metodo_pago || 'efectivo',
-    total: Number(venta.total ?? 0),
-    cantidad: Number(primerItem?.qty ?? 1),
+    cantidad:    Number(primerItem?.qty ?? 1),
+    total:       Number(venta.total ?? 0),
   }
   modalEditarAbierto.value = true
 }
 
 function actualizarTotalDesdeCantidad() {
-  const venta = ventaEditando.value
-  if (!venta) return
-
-  const precioUnitario = Number(venta.items?.[0]?.precio ?? 0)
+  const precioUnitario = Number(formEdicion.value.precio ?? 0)
   const cantidad = Number(formEdicion.value.cantidad ?? 0)
   if (precioUnitario <= 0 || cantidad <= 0) return
 
@@ -113,9 +112,11 @@ async function guardarEdicionVenta() {
   guardandoEdicion.value = true
   try {
     await ventasStore.actualizarVenta(ventaEditandoId.value, {
+      nombre:      String(formEdicion.value.nombre || '').trim().toUpperCase(),
+      precio:      Number(formEdicion.value.precio),
       metodo_pago: formEdicion.value.metodo_pago,
-      total: Number(formEdicion.value.total),
-      cantidad: Number(formEdicion.value.cantidad),
+      cantidad:    Number(formEdicion.value.cantidad),
+      total:       Number(formEdicion.value.total),
     })
     cerrarEditarVenta()
   } finally {
@@ -130,32 +131,38 @@ async function eliminarVenta(venta) {
 }
 
 // ─── Suscripción dinámica ──────────────────────────────────────────────────
-let unsubProductos, unsubVentas
+let unsubProductos
 const loadingVentas = ref(false)
 
-function resuscribir() {
-  unsubVentas?.()
+async function cargarPeriodo(options = {}) {
   loadingVentas.value = true
   const inicio = new Date(periodo.value.year, periodo.value.month - 1, 1)
   const fin    = new Date(periodo.value.year, periodo.value.month, 0, 23, 59, 59, 999)
-  unsubVentas  = ventasStore.subscribeByPeriodo(inicio, fin, () => {
+  try {
+    await ventasStore.initPeriodo(inicio, fin, options)
+  } finally {
     loadingVentas.value = false
-  })
+  }
 }
 
 onMounted(() => {
   unsubProductos = productosStore.subscribe()
-  resuscribir()
+  cargarPeriodo({ force: true })
   window.addEventListener('keydown', onKeydownModalVenta, true)
 })
 
-watch(periodo, resuscribir, { deep: true })
+watch(periodo, () => {
+  cargarPeriodo({ force: true })
+}, { deep: true })
 
 onUnmounted(() => {
   unsubProductos?.()
-  unsubVentas?.()
   window.removeEventListener('keydown', onKeydownModalVenta, true)
 })
+
+async function cargarMasVentas() {
+  await ventasStore.loadMorePeriodo()
+}
 </script>
 
 <template>
@@ -299,6 +306,17 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+
+        <div class="py-2">
+          <button
+            v-if="ventasStore.hasMorePeriodo"
+            @click="cargarMasVentas"
+            :disabled="ventasStore.loadingMorePeriodo"
+            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {{ ventasStore.loadingMorePeriodo ? 'Cargando más…' : 'Cargar más ventas' }}
+          </button>
+        </div>
         </div><!-- fin lista scrolleable -->
       </div>
 
@@ -308,77 +326,105 @@ onUnmounted(() => {
     <Teleport to="body">
       <div
         v-if="modalEditarAbierto"
-        class="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
         @click.self="cerrarEditarVenta"
         @keydown.esc.prevent.stop="cerrarEditarVenta"
       >
-        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
-          <div class="flex items-center justify-between mb-4">
+        <div class="bg-white w-full max-w-md rounded-xl shadow-xl flex flex-col" style="max-height: min(90vh, 620px)">
+
+          <!-- Header fijo -->
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
             <h3 class="text-base font-bold text-gray-800">Editar venta</h3>
             <button
               type="button"
               @click="cerrarEditarVenta"
               aria-label="Cerrar modal"
               class="w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-            >
-              ✕
-            </button>
+            >✕</button>
           </div>
 
-          <form @submit.prevent="guardarEdicionVenta" class="space-y-3">
-            <div>
-              <label class="text-xs text-gray-500">Método de pago</label>
-              <select
-                v-model="formEdicion.metodo_pago"
-                @change="actualizarTotalDesdeCantidad"
-                class="w-full mt-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                <option value="efectivo">Efectivo</option>
-                <option value="transferencia">Transferencia</option>
-                <option value="credito">Crédito</option>
-                <option value="debito">Débito</option>
-              </select>
-            </div>
+          <!-- Contenido scrolleable -->
+          <form @submit.prevent="guardarEdicionVenta" class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
 
+            <!-- Producto -->
             <div>
-              <label class="text-xs text-gray-500">Cantidad</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Producto</label>
               <input
-                v-model.number="formEdicion.cantidad"
-                type="number"
-                min="0.001"
-                step="0.001"
-                @input="actualizarTotalDesdeCantidad"
-                class="w-full mt-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                v-model="formEdicion.nombre"
+                type="text"
+                placeholder="Nombre del producto"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
 
+            <!-- Cantidad + Precio unitario -->
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
+                <input
+                  v-model.number="formEdicion.cantidad"
+                  type="number" min="0.001" step="0.001"
+                  @input="actualizarTotalDesdeCantidad"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Precio unitario $</label>
+                <input
+                  v-model.number="formEdicion.precio"
+                  type="number" min="0"
+                  @input="actualizarTotalDesdeCantidad"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+            </div>
+
+            <!-- Método de pago (chips) -->
             <div>
-              <label class="text-xs text-gray-500">Total</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Método de pago</label>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="m in METODOS_PAGO"
+                  :key="m.value"
+                  type="button"
+                  @click="formEdicion.metodo_pago = m.value; actualizarTotalDesdeCantidad()"
+                  :class="[
+                    'px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors',
+                    formEdicion.metodo_pago === m.value
+                      ? 'bg-green-500 text-white border-green-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-green-300',
+                  ]"
+                >{{ m.label }}</button>
+              </div>
+            </div>
+
+            <!-- Total -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Total $</label>
               <input
                 v-model.number="formEdicion.total"
-                type="number"
-                min="0"
-                class="w-full mt-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                type="number" min="0"
+                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
 
-            <div class="flex gap-3 pt-1">
-              <button
-                type="button"
-                @click="cerrarEditarVenta"
-                class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
-              >
-                ↩️ Cancelar
-              </button>
-              <button
-                type="submit"
-                :disabled="guardandoEdicion"
-                class="flex-1 py-2.5 bg-green-500 text-white font-semibold rounded-xl text-sm disabled:opacity-50 hover:bg-green-600 transition-colors"
-              >
-                {{ guardandoEdicion ? '⏳ Guardando...' : '💾 Guardar' }}
-              </button>
-            </div>
           </form>
+
+          <!-- Botones fijos abajo -->
+          <div class="flex gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
+            <button
+              type="button"
+              @click="cerrarEditarVenta"
+              class="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+            >↩️ Cancelar</button>
+            <button
+              type="button"
+              @click="guardarEdicionVenta"
+              :disabled="guardandoEdicion"
+              class="flex-1 py-2.5 bg-green-500 text-white font-bold rounded-lg text-sm disabled:opacity-50 hover:bg-green-600 transition-colors"
+            >{{ guardandoEdicion ? '⏳ Guardando...' : '💾 Guardar' }}</button>
+          </div>
+
         </div>
       </div>
     </Teleport>
