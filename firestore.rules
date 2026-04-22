@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function isAutenticado() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      // El rol se establece como Custom Claim en Firebase Auth
+      return request.auth != null && request.auth.token.role == 'admin';
+    }
+    function isCajeroOAdmin() {
+      return request.auth != null &&
+        (request.auth.token.role == 'cajero' || request.auth.token.role == 'admin');
+    }
+
+    // ── productos ────────────────────────────────────────────────────────────
+    // Cajeros y admin leen. Solo admin crea/edita/borra.
+    match /productos/{id} {
+      allow read:             if isAutenticado();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── ventas ───────────────────────────────────────────────────────────────
+    // Cualquier usuario autenticado puede crear. Nadie puede editar ni borrar
+    // (excepto admin). Inmutabilidad del registro de venta para cajeros.
+    match /ventas/{id} {
+      allow read:   if isAutenticado();
+      allow create: if isCajeroOAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── movimientos_caja ─────────────────────────────────────────────────────
+    // Cajero puede crear (apertura, cierre, entrada, salida).
+    // Nadie puede editar ni borrar excepto admin.
+    match /movimientos_caja/{id} {
+      allow read:   if isAutenticado();
+      allow create: if isCajeroOAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── proveedores ──────────────────────────────────────────────────────────
+    // Solo admin.
+    match /proveedores/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── cuentas_pagar ────────────────────────────────────────────────────────
+    // Solo admin.
+    match /cuentas_pagar/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── compras ──────────────────────────────────────────────────────────────
+    // Solo admin puede ver y registrar compras.
+    match /compras/{id} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

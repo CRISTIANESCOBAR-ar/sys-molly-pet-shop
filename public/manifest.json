@@ -1,0 +1,26 @@
+{
+  "name": "Molly Petshop",
+  "short_name": "Molly",
+  "description": "Sistema de gestión - Molly Petshop",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#22c55e",
+  "background_color": "#f0fdf4",
+  "lang": "es-AR",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
