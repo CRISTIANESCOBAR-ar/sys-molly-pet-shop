@@ -3,11 +3,13 @@ import { ref, computed } from 'vue'
 import { useAuthStore }     from '@/stores/useAuthStore'
 import { useProductosStore } from '@/stores/useProductosStore'
 import { useSyncQueueStore } from '@/stores/useSyncQueueStore'
+import { useUsageMetricsStore } from '@/stores/useUsageMetricsStore'
 import { useRouter, useRoute } from 'vue-router'
 
 const authStore      = useAuthStore()
 const productosStore = useProductosStore()
 const syncQueueStore = useSyncQueueStore()
+const usageMetricsStore = useUsageMetricsStore()
 const router         = useRouter()
 const route          = useRoute()
 
@@ -30,6 +32,18 @@ const itemsVisibles = computed(() =>
 const seccionActual = computed(() =>
   todosItems.find(i => i.path === route.path)?.label ?? 'Molly Petshop',
 )
+
+const resumenCostoSesion = computed(() => ({
+  lecturas: usageMetricsStore.estimatedReads,
+  escrituras: usageMetricsStore.estimatedWrites,
+}))
+
+const nivelCostoSesion = computed(() => {
+  const total = (Number(resumenCostoSesion.value.lecturas) || 0) + (Number(resumenCostoSesion.value.escrituras) || 0)
+  if (total >= 1000) return { label: 'Alto', desktopClass: 'bg-red-50 text-red-700 border-red-200' }
+  if (total >= 300) return { label: 'Medio', desktopClass: 'bg-amber-50 text-amber-700 border-amber-200' }
+  return { label: 'Bajo', desktopClass: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+})
 
 function navegar(path) {
   router.push(path)
@@ -94,6 +108,17 @@ async function handleLogout() {
           <span v-if="syncQueueStore.isSyncing">↻ Sincronizando</span>
           <span v-else>⏳ {{ syncQueueStore.pendingCount }} pendiente{{ syncQueueStore.pendingCount > 1 ? 's' : '' }}</span>
         </button>
+        <router-link
+          v-if="authStore.isAdmin"
+          to="/metricas"
+          :class="[
+            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border',
+            nivelCostoSesion.desktopClass,
+          ]"
+          :title="`Métricas estimadas de sesión · R${resumenCostoSesion.lecturas} / W${resumenCostoSesion.escrituras}`"
+        >
+          📊 {{ nivelCostoSesion.label }}
+        </router-link>
         <span class="text-xs text-gray-400">
           {{ authStore.user?.email }}
           <span class="ml-1 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-xs">
@@ -126,6 +151,19 @@ async function handleLogout() {
           <span v-if="syncQueueStore.isSyncing">↻</span>
           <span v-else>⏳ {{ syncQueueStore.pendingCount }}</span>
         </button>
+
+        <router-link
+          v-if="authStore.isAdmin"
+          to="/metricas"
+          @click="menuAbierto = false"
+          :class="[
+            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border',
+            nivelCostoSesion.desktopClass,
+          ]"
+          :title="`Métricas estimadas · R${resumenCostoSesion.lecturas} / W${resumenCostoSesion.escrituras}`"
+        >
+          📊 {{ nivelCostoSesion.label }}
+        </router-link>
 
         <button
           @click="menuAbierto = !menuAbierto"
