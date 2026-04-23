@@ -1,11 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/useAuthStore'
+import LoginView from '@/views/LoginView.vue'
+import VentasView from '@/views/VentasView.vue'
+import StockView from '@/views/StockView.vue'
+import ProveedoresView from '@/views/ProveedoresView.vue'
+import CuentasPagarView from '@/views/CuentasPagarView.vue'
+import ComprasView from '@/views/ComprasView.vue'
+import GraficosView from '@/views/GraficosView.vue'
+import MetricasLecturaView from '@/views/MetricasLecturaView.vue'
 
 const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/LoginView.vue'),
+    component: LoginView,
     meta: { public: true },
   },
   {
@@ -15,43 +23,43 @@ const routes = [
   {
     path: '/ventas',
     name: 'Ventas',
-    component: () => import('@/views/VentasView.vue'),
+    component: VentasView,
     meta: { requiresAuth: true },
   },
   {
     path: '/stock',
     name: 'Stock',
-    component: () => import('@/views/StockView.vue'),
+    component: StockView,
     meta: { requiresAuth: true },
   },
   {
     path: '/proveedores',
     name: 'Proveedores',
-    component: () => import('@/views/ProveedoresView.vue'),
+    component: ProveedoresView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/cuentas-pagar',
     name: 'CuentasPagar',
-    component: () => import('@/views/CuentasPagarView.vue'),
+    component: CuentasPagarView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/compras',
     name: 'Compras',
-    component: () => import('@/views/ComprasView.vue'),
+    component: ComprasView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/graficos',
     name: 'Graficos',
-    component: () => import('@/views/GraficosView.vue'),
+    component: GraficosView,
     meta: { requiresAuth: true },
   },
   {
     path: '/metricas',
     name: 'Metricas',
-    component: () => import('@/views/MetricasLecturaView.vue'),
+    component: MetricasLecturaView,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
@@ -80,6 +88,17 @@ router.beforeEach((to) => {
   if (to.meta.requiresAdmin && !authStore.isAdmin) return { name: 'Ventas' }
 
   return true
+})
+
+// Si una lazy-view falla de cargar (SW stale), recarga la página una vez
+let _cacheErrorReloaded = false
+router.onError((err) => {
+  if (/dynamically imported module|Failed to fetch|Loading chunk|ChunkLoadError/i.test(err?.message || '')) {
+    if (!_cacheErrorReloaded) {
+      _cacheErrorReloaded = true
+      window.location.reload()
+    }
+  }
 })
 
 export default router

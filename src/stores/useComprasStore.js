@@ -24,6 +24,9 @@ export const useComprasStore = defineStore('compras', () => {
     compras.value.filter(c => (c.estado || 'activa') !== 'anulada'),
   )
 
+  // Alias: todas las compras activas del período cargado (sin límite adicional)
+  const comprasMostradas = computed(() => comprasActivas.value)
+
   const totalPeriodo = computed(() =>
     comprasActivas.value.reduce((s, c) => s + (c.total ?? 0), 0),
   )

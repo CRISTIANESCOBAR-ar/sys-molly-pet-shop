@@ -58,94 +58,106 @@ async function handleLogout() {
 </script>
 
 <template>
-  <nav class="bg-white border-b border-gray-100 shadow-sm">
-    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+  <nav class="border-b border-green-400 shadow-md flex-shrink-0" style="background: #62ef4f">
+    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between py-3">
 
-      <!-- Logo + nombre app + sección actual -->
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="text-2xl flex-shrink-0">🐾</span>
+      <!-- Logo + nombre -->
+      <div class="flex items-center gap-2 min-w-0 flex-shrink-0">
+        <img src="/icons/icon-192.png" alt="Molly Petshop" class="w-8 h-8 rounded-xl object-contain shadow-sm flex-shrink-0" />
         <div class="flex flex-col min-w-0 leading-tight">
-          <span class="font-extrabold text-gray-800 text-base truncate">Molly Petshop</span>
-          <span class="text-xs text-gray-400 truncate md:hidden">{{ seccionActual }}</span>
+          <span class="font-extrabold text-green-950 text-sm truncate">Molly Petshop</span>
+          <span class="text-[10px] text-green-800 truncate md:hidden">{{ seccionActual }}</span>
         </div>
       </div>
 
-      <!-- Desktop: links completos (ocultos en mobile) -->
-      <div class="hidden md:flex items-center gap-1">
+      <!-- Desktop: links compactos -->
+      <div class="hidden md:flex items-center gap-0.5">
         <router-link
           v-for="item in itemsVisibles"
           :key="item.path"
           :to="item.path"
           :class="[
-            'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+            'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
             route.path === item.path
-              ? 'bg-green-50 text-green-700'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700',
+              ? 'bg-white/45 text-green-950 font-semibold'
+              : 'text-green-900 hover:bg-white/25 hover:text-green-950',
           ]"
         >
-          <span>{{ item.icon }}</span>
+          <span class="text-sm">{{ item.icon }}</span>
           <span>{{ item.label }}</span>
         </router-link>
       </div>
 
-      <!-- Desktop: usuario + salir -->
-      <div class="hidden md:flex items-center gap-2">
+      <!-- Desktop: badges + usuario + salir -->
+      <div class="hidden md:flex items-center gap-1.5 flex-shrink-0">
+        <!-- Badge stock bajo -->
         <router-link
           v-if="productosStore.productosConStockBajo.length > 0"
           to="/stock"
-          class="flex items-center gap-1 bg-red-50 text-red-600 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
+          class="flex items-center gap-1 bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-lg"
         >⚠ {{ productosStore.productosConStockBajo.length }} sin stock</router-link>
+
         <!-- Badge cola offline -->
         <button
           v-if="syncQueueStore.isSyncing || syncQueueStore.pendingCount > 0"
           @click="syncQueueStore.processQueue()"
-          :title="syncQueueStore.isSyncing ? 'Sincronizando...' : `${syncQueueStore.pendingCount} operación(es) guardada(s) sin enviar. Tap para reintentar.`"
+          :title="syncQueueStore.isSyncing ? 'Sincronizando...' : `${syncQueueStore.pendingCount} operación(es) pendiente(s). Click para reintentar.`"
           :class="[
-            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors',
-            syncQueueStore.isSyncing ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700',
+            'flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors',
+            syncQueueStore.isSyncing
+              ? 'bg-blue-600 text-white border-blue-700'
+              : 'bg-amber-500 text-white border-amber-600',
           ]"
         >
-          <span v-if="syncQueueStore.isSyncing">↻ Sincronizando</span>
-          <span v-else>⏳ {{ syncQueueStore.pendingCount }} pendiente{{ syncQueueStore.pendingCount > 1 ? 's' : '' }}</span>
+          <span v-if="syncQueueStore.isSyncing">↻ Sync</span>
+          <span v-else>⏳ {{ syncQueueStore.pendingCount }}</span>
         </button>
+
+        <!-- Badge métricas -->
         <router-link
           v-if="authStore.isAdmin"
           to="/metricas"
-          :class="[
-            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border',
-            nivelCostoSesion.desktopClass,
-          ]"
-          :title="`Métricas estimadas de sesión · R${resumenCostoSesion.lecturas} / W${resumenCostoSesion.escrituras}`"
+          class="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border bg-green-900/15 text-green-950 border-green-800/30"
+          :title="`Métricas estimadas · R${resumenCostoSesion.lecturas} / W${resumenCostoSesion.escrituras}`"
         >
           📊 {{ nivelCostoSesion.label }}
         </router-link>
-        <span class="text-xs text-gray-400">
-          {{ authStore.user?.email }}
-          <span class="ml-1 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-xs">
+
+        <!-- Separador -->
+        <div class="w-px h-5 bg-green-800/30 mx-0.5"></div>
+
+        <!-- Usuario -->
+        <span class="text-xs text-green-900 truncate max-w-[140px]">
+          {{ authStore.perfil?.nombre || authStore.user?.email?.split('@')[0] }}
+          <span class="ml-1 bg-green-900/15 px-1.5 py-0.5 rounded text-[10px]">
             {{ authStore.isAdmin ? 'Admin' : 'Cajero' }}
           </span>
         </span>
-        <button @click="handleLogout" class="text-sm text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
+
+        <!-- Salir -->
+        <button
+          @click="handleLogout"
+          class="text-xs bg-green-900/20 hover:bg-green-900/35 border border-green-900/30 px-2.5 py-1 rounded-lg font-semibold text-green-950 transition-colors"
+        >
           Salir
         </button>
       </div>
 
-      <!-- Mobile: alerta + hamburguesa -->
-      <div class="flex md:hidden items-center gap-2">
+      <!-- Mobile: badges + hamburguesa -->
+      <div class="flex md:hidden items-center gap-1.5">
         <router-link
           v-if="productosStore.productosConStockBajo.length > 0"
           to="/stock"
           @click="menuAbierto = false"
-          class="flex items-center gap-1 bg-red-50 text-red-600 text-sm font-semibold px-2.5 py-1.5 rounded-lg"
+          class="flex items-center gap-1 bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-lg"
         >⚠ {{ productosStore.productosConStockBajo.length }}</router-link>
 
-        <!-- Badge cola offline (mobile) -->
         <button
           v-if="syncQueueStore.isSyncing || syncQueueStore.pendingCount > 0"
           @click="syncQueueStore.processQueue()"
           :class="[
-            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg',
-            syncQueueStore.isSyncing ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700',
+            'flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg',
+            syncQueueStore.isSyncing ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white',
           ]"
         >
           <span v-if="syncQueueStore.isSyncing">↻</span>
@@ -156,18 +168,12 @@ async function handleLogout() {
           v-if="authStore.isAdmin"
           to="/metricas"
           @click="menuAbierto = false"
-          :class="[
-            'flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border',
-            nivelCostoSesion.desktopClass,
-          ]"
-          :title="`Métricas estimadas · R${resumenCostoSesion.lecturas} / W${resumenCostoSesion.escrituras}`"
-        >
-          📊 {{ nivelCostoSesion.label }}
-        </router-link>
+          class="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border bg-green-900/15 text-green-950 border-green-800/30"
+        >📊</router-link>
 
         <button
           @click="menuAbierto = !menuAbierto"
-          class="flex items-center justify-center w-11 h-11 rounded-xl bg-gray-100 text-gray-600 text-2xl font-bold active:bg-gray-200 transition-colors"
+          class="flex items-center justify-center w-9 h-9 rounded-xl bg-green-900/20 hover:bg-green-900/35 text-green-950 text-lg font-bold transition-colors border border-green-900/30"
           aria-label="Menú"
         >
           {{ menuAbierto ? '✕' : '☰' }}
@@ -188,7 +194,7 @@ async function handleLogout() {
 
           <!-- Panel -->
           <div
-            class="absolute top-14 inset-x-0 bg-white shadow-lg border-t border-gray-100 pb-4"
+            class="absolute top-12 inset-x-0 bg-white shadow-lg border-t border-gray-100 pb-4"
             @click.stop
           >
             <!-- Nav items -->

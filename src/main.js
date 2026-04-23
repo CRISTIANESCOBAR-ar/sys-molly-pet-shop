@@ -50,11 +50,14 @@ const updateSW = registerSW({
   },
 })
 
-authStore.init().then(() => {
-  app.use(router)
-  app.mount('#app')
-  requestAnimationFrame(() => {
-    ocultarSplashInicial()
+authStore.init()
+  .then(() => {
+    app.use(router)
+    app.mount('#app')
+    useSyncQueueStore().init()
   })
-  useSyncQueueStore().init()
-})
+  .finally(() => {
+    requestAnimationFrame(() => {
+      ocultarSplashInicial()
+    })
+  })

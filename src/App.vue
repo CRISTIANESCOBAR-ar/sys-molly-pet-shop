@@ -1,8 +1,18 @@
 <script setup>
-// App.vue es solo el punto de entrada del router.
-// La inicialización de Auth se hace en main.js antes de montar.
+import { ref, onErrorCaptured } from 'vue'
+
+const errorCapturado = ref(null)
+
+onErrorCaptured((err) => {
+  errorCapturado.value = err?.message || String(err)
+  console.error('[App] error capturado:', err)
+  return false // no propagar
+})
 </script>
 
 <template>
-  <RouterView />
+  <div v-if="errorCapturado" style="padding:24px;font-family:monospace;background:#fee2e2;color:#991b1b;white-space:pre-wrap">
+    <strong>Error en la app:</strong><br>{{ errorCapturado }}
+  </div>
+  <RouterView v-else />
 </template>
