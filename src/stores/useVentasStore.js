@@ -17,13 +17,19 @@ export const useVentasStore = defineStore('ventas', () => {
   const periodoActualKey = ref('')
   const periodoInicio = ref(null)
   const periodoFin = ref(null)
-  const ultimoDocPeriodo = ref(null)
-  const hasMorePeriodo = ref(false)
+  const paginaLocal = ref(pageSize)
   const loadingPeriodo = ref(false)
-  const loadingMorePeriodo = ref(false)
 
   const ventasActivas = computed(() =>
     ventas.value.filter(v => (v.estado || 'activa') !== 'anulada'),
+  )
+
+  const ventasMostradas = computed(() =>
+    ventasActivas.value.slice(0, paginaLocal.value),
+  )
+
+  const hasMorePeriodo = computed(() =>
+    ventasActivas.value.length > paginaLocal.value,
   )
 
   // ─── Computed ──────────────────────────────────────────────────────────────
@@ -123,6 +129,7 @@ export const useVentasStore = defineStore('ventas', () => {
         total:          total.value,
         metodo_pago:    metodoPago.value,
         id_usuario:     authStore.user?.uid,
+        usuario_email:  authStore.user?.email || null,
         estado:         'activa',
       })
     })
@@ -305,7 +312,7 @@ export const useVentasStore = defineStore('ventas', () => {
     }
   }
 
-  // ─── Paginación por período (evita traer el mes completo) ─────────────────
+  // ─── Paginación por período: carga el mes completo y pagina localmente ────────
   async function initPeriodo(inicio, fin, options = {}) {
     const force = Boolean(options.force)
     const key = `${inicio.getTime()}-${fin.getTime()}`
@@ -314,45 +321,28 @@ export const useVentasStore = defineStore('ventas', () => {
     periodoActualKey.value = key
     periodoInicio.value = inicio
     periodoFin.value = fin
-    ultimoDocPeriodo.value = null
-    hasMorePeriodo.value = true
+    paginaLocal.value = pageSize
     ventas.value = []
 
     loadingPeriodo.value = true
     try {
-      await loadMorePeriodo()
+      const metrics = useUsageMetricsStore()
+      const q = query(
+        collection(db, 'ventas'),
+        where('fecha', '>=', Timestamp.fromDate(inicio)),
+        where('fecha', '<=', Timestamp.fromDate(fin)),
+        orderBy('fecha', 'desc'),
+      )
+      const snap = await getDocs(q)
+      ventas.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      metrics.trackReadEstimate('ventas.periodo', snap.docs.length)
     } finally {
       loadingPeriodo.value = false
     }
   }
 
-  async function loadMorePeriodo() {
-    if (loadingMorePeriodo.value || !hasMorePeriodo.value || !periodoInicio.value || !periodoFin.value) return
-
-    loadingMorePeriodo.value = true
-    try {
-      const metrics = useUsageMetricsStore()
-      const base = [
-        collection(db, 'ventas'),
-        where('fecha', '>=', Timestamp.fromDate(periodoInicio.value)),
-        where('fecha', '<=', Timestamp.fromDate(periodoFin.value)),
-        orderBy('fecha', 'desc'),
-      ]
-
-      const q = ultimoDocPeriodo.value
-        ? query(...base, startAfter(ultimoDocPeriodo.value), limit(pageSize))
-        : query(...base, limit(pageSize))
-
-      const snap = await getDocs(q)
-      const batch = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      ventas.value = [...ventas.value, ...batch]
-      ultimoDocPeriodo.value = snap.docs[snap.docs.length - 1] || null
-      hasMorePeriodo.value = snap.docs.length === pageSize
-
-      metrics.trackReadEstimate('ventas.periodo.page', snap.docs.length)
-    } finally {
-      loadingMorePeriodo.value = false
-    }
+  function loadMorePeriodo() {
+    paginaLocal.value += pageSize
   }
 
   // Compatibilidad: mantiene API anterior sin listener realtime.
@@ -370,6 +360,7 @@ export const useVentasStore = defineStore('ventas', () => {
   return {
     ventas,
     ventasActivas,
+    ventasMostradas,
     carrito,
     metodoPago,
     subtotal,
@@ -388,6 +379,5 @@ export const useVentasStore = defineStore('ventas', () => {
     loadMorePeriodo,
     hasMorePeriodo,
     loadingPeriodo,
-    loadingMorePeriodo,
   }
 })

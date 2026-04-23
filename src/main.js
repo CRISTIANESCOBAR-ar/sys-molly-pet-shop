@@ -26,6 +26,16 @@ function ocultarSplashInicial() {
 }
 
 // Fuerza la adopción de nuevas versiones de la app sin reinstalar la PWA.
+// Cuando el SW nuevo toma control, recarga la página para usar el JS actualizado.
+let recargandoPorSW = false
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (recargandoPorSW) return
+    recargandoPorSW = true
+    window.location.reload()
+  })
+}
+
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
@@ -33,9 +43,10 @@ const updateSW = registerSW({
   },
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return
+    // Polling cada 30s en lugar de 60s para detectar actualizaciones más rápido
     setInterval(() => {
       registration.update()
-    }, 60 * 1000)
+    }, 30 * 1000)
   },
 })
 

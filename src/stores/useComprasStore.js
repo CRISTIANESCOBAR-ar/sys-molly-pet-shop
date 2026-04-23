@@ -275,6 +275,7 @@ export const useComprasStore = defineStore('compras', () => {
   return {
     compras,
     comprasActivas,
+    comprasMostradas,
     totalPeriodo,
     porProveedor,
     subscribeByPeriodo,
@@ -282,7 +283,6 @@ export const useComprasStore = defineStore('compras', () => {
     loadMorePeriodo,
     hasMorePeriodo,
     loadingPeriodo,
-    loadingMorePeriodo,
     registrarCompra,
     actualizarCompra,
     eliminarCompra,

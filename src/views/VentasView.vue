@@ -161,7 +161,7 @@ onUnmounted(() => {
 })
 
 async function cargarMasVentas() {
-  await ventasStore.loadMorePeriodo()
+  ventasStore.loadMorePeriodo()
 }
 </script>
 
@@ -256,7 +256,7 @@ async function cargarMasVentas() {
         <!-- LISTA SCROLLEABLE -->
         <div class="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-4 md:px-6">
         <div
-          v-for="venta in ventasStore.ventasActivas"
+          v-for="venta in ventasStore.ventasMostradas"
           :key="venta.id"
           class="bg-white rounded-xl border border-gray-100 p-4 mb-3 shadow-sm"
         >
@@ -283,6 +283,10 @@ async function cargarMasVentas() {
           </ul>
           <p class="text-xl font-bold text-gray-900">
             ${{ (venta.total ?? 0).toLocaleString('es-AR') }}
+          </p>
+          <p v-if="venta.usuario_email" class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+            <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+            {{ venta.usuario_email }}
           </p>
           <div v-if="authStore.isAdmin" class="flex justify-end gap-2 mt-3">
             <button
@@ -311,10 +315,9 @@ async function cargarMasVentas() {
           <button
             v-if="ventasStore.hasMorePeriodo"
             @click="cargarMasVentas"
-            :disabled="ventasStore.loadingMorePeriodo"
-            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50"
           >
-            {{ ventasStore.loadingMorePeriodo ? 'Cargando más…' : 'Cargar más ventas' }}
+            Cargar más ventas ({{ ventasStore.ventasActivas.length - ventasStore.ventasMostradas.length }} restantes)
           </button>
         </div>
         </div><!-- fin lista scrolleable -->

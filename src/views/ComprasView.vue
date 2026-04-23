@@ -75,8 +75,8 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeydownModalCompra, true)
 })
 
-async function cargarMasCompras() {
-  await comprasStore.loadMorePeriodo()
+function cargarMasCompras() {
+  comprasStore.loadMorePeriodo()
 }
 
 // ─── Formulario nueva compra ──────────────────────────────────────────────────
@@ -477,7 +477,7 @@ async function eliminarCompra(compra) {
         <!-- LISTA SCROLLEABLE -->
         <div class="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-4 md:px-6">
         <div
-          v-for="compra in comprasStore.comprasActivas"
+          v-for="compra in comprasStore.comprasMostradas"
           :key="compra.id"
           class="bg-white rounded-xl border border-gray-100 p-4 mb-3 shadow-sm"
         >
@@ -497,6 +497,10 @@ async function eliminarCompra(compra) {
             </div>
             <span class="text-xl font-bold text-gray-900">${{ (compra.total ?? 0).toLocaleString('es-AR') }}</span>
           </div>
+          <p v-if="compra.usuario_email" class="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+            {{ compra.usuario_email }}
+          </p>
           <div v-if="authStore.isAdmin" class="flex justify-end gap-2 mt-3">
             <button
               @click="abrirEditarCompra(compra)"
@@ -523,10 +527,9 @@ async function eliminarCompra(compra) {
           <button
             v-if="comprasStore.hasMorePeriodo"
             @click="cargarMasCompras"
-            :disabled="comprasStore.loadingMorePeriodo"
-            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            class="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50"
           >
-            {{ comprasStore.loadingMorePeriodo ? 'Cargando más…' : 'Cargar más compras' }}
+            Cargar más compras ({{ comprasStore.comprasActivas.length - comprasStore.comprasMostradas.length }} restantes)
           </button>
         </div>
         </div><!-- fin lista scrolleable -->
