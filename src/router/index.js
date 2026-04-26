@@ -8,6 +8,7 @@ import CuentasPagarView from '@/views/CuentasPagarView.vue'
 import ComprasView from '@/views/ComprasView.vue'
 import GraficosView from '@/views/GraficosView.vue'
 import MetricasLecturaView from '@/views/MetricasLecturaView.vue'
+import UsuariosView from '@/views/UsuariosView.vue'
 
 const routes = [
   {
@@ -55,6 +56,12 @@ const routes = [
     name: 'Graficos',
     component: GraficosView,
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/usuarios',
+    name: 'Usuarios',
+    component: UsuariosView,
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/metricas',

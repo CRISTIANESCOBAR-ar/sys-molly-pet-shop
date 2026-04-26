@@ -5,11 +5,13 @@ import VentaRapida  from '@/components/VentaRapida.vue'
 import { useVentasStore }    from '@/stores/useVentasStore'
 import { useProductosStore } from '@/stores/useProductosStore'
 import { useAuthStore }      from '@/stores/useAuthStore'
+import { useUsuariosStore }  from '@/stores/useUsuariosStore'
 import { METODOS_PAGO }      from '@/firebase/constants'
 
 const ventasStore    = useVentasStore()
 const productosStore = useProductosStore()
 const authStore      = useAuthStore()
+const usuariosStore  = useUsuariosStore()
 
 // ─── Tab mobile ────────────────────────────────────────────────────────
 const tabActivo = ref('venta') // 'venta' | 'historial'
@@ -132,6 +134,7 @@ async function eliminarVenta(venta) {
 
 // ─── Suscripción dinámica ──────────────────────────────────────────────────
 let unsubProductos
+let unsubUsuarios
 const loadingVentas = ref(false)
 
 async function cargarPeriodo(options = {}) {
@@ -145,8 +148,14 @@ async function cargarPeriodo(options = {}) {
   }
 }
 
+function obtenerNombreUsuario(email) {
+  const usuario = usuariosStore.usuarios.find(u => u.email === email)
+  return usuario ? usuario.nombre : 'Vendedor'
+}
+
 onMounted(() => {
   unsubProductos = productosStore.subscribe()
+  unsubUsuarios = usuariosStore.subscribe()
   cargarPeriodo({ force: true })
   window.addEventListener('keydown', onKeydownModalVenta, true)
 })
@@ -157,6 +166,7 @@ watch(periodo, () => {
 
 onUnmounted(() => {
   unsubProductos?.()
+  unsubUsuarios?.()
   window.removeEventListener('keydown', onKeydownModalVenta, true)
 })
 
@@ -286,11 +296,12 @@ async function cargarMasVentas() {
           </p>
           <p v-if="venta.usuario_email" class="text-xs text-gray-400 mt-1 flex items-center gap-1">
             <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
-            {{ venta.usuario_email }}
+            {{ obtenerNombreUsuario(venta.usuario_email) }} ({{ venta.usuario_email }})
           </p>
           <div v-if="authStore.isAdmin" class="flex justify-end gap-2 mt-3">
             <button
               @click="abrirEditarVenta(venta)"
+              v-tippy="'Corregir datos de la venta'"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 transition-colors"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -300,6 +311,7 @@ async function cargarMasVentas() {
             </button>
             <button
               @click="eliminarVenta(venta)"
+              v-tippy="'Anular y borrar esta venta'"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200 border border-red-200 transition-colors"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">

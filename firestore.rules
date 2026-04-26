@@ -6,13 +6,18 @@ service cloud.firestore {
     function isAutenticado() {
       return request.auth != null;
     }
+    function getRolDoc() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role;
+    }
+    
     function isAdmin() {
-      // El rol se establece como Custom Claim en Firebase Auth
-      return request.auth != null && request.auth.token.role == 'admin';
+      return request.auth != null && 
+        (request.auth.token.role == 'admin' || getRolDoc() == 'admin');
     }
     function isCajeroOAdmin() {
       return request.auth != null &&
-        (request.auth.token.role == 'cajero' || request.auth.token.role == 'admin');
+        (request.auth.token.role == 'cajero' || request.auth.token.role == 'admin' ||
+         getRolDoc() == 'cajero' || getRolDoc() == 'admin');
     }
 
     // ── productos ────────────────────────────────────────────────────────────
@@ -20,6 +25,14 @@ service cloud.firestore {
     match /productos/{id} {
       allow read:             if isAutenticado();
       allow create, update, delete: if isAdmin();
+    }
+
+    // ── usuarios ─────────────────────────────────────────────────────────────
+    // Colección para gestionar roles en UI y consultar.
+    match /usuarios/{id} {
+      // El mismo usuario puede leer su doc (útil para auth), admin puede todo
+      allow read: if isAutenticado();
+      allow write: if isAdmin();
     }
 
     // ── ventas ───────────────────────────────────────────────────────────────

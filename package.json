@@ -12,6 +12,7 @@
     "unify:proveedores:apply": "node scripts/unifyProveedores.js --apply"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@vitejs/plugin-vue": "^6.0.6",
     "autoprefixer": "^10.5.0",
     "firebase-admin": "^13.8.0",
@@ -25,8 +26,10 @@
   "dependencies": {
     "firebase": "^12.12.1",
     "pinia": "^3.0.4",
+    "tippy.js": "^6.3.7",
     "vite-plugin-pwa": "^1.2.0",
     "vue": "^3.5.32",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "vue-tippy": "^6.7.1"
   }
 }

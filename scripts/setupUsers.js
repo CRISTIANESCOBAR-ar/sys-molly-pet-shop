@@ -70,6 +70,17 @@ async function setupUsuario({ email, displayName, role, password }) {
   // Asignar Custom Claim de rol
   await admin.auth().setCustomUserClaims(uid, { role })
   console.log(`🔑 Rol asignado: ${email} → '${role}'`)
+
+  // Guardar/Actualizar en Firestore para que aparezca en la UI
+  const db = admin.firestore()
+  await db.collection('usuarios').doc(uid).set({
+    uid,
+    email,
+    nombre: displayName || email,
+    role,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true })
+  console.log(`📝 Documento guardado en Firestore: usuarios/${uid}`)
 }
 
 async function main() {

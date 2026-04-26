@@ -5,9 +5,24 @@ import App             from './App.vue'
 import './style.css'
 import { registerSW }  from 'virtual:pwa-register'
 
+import VueTippy from 'vue-tippy'
+import 'tippy.js/dist/tippy.css' // estilo base
+import 'tippy.js/themes/light-border.css' // theme que seteamos para que no sea negro oscuro
+import 'tippy.js/animations/shift-away.css' // estilo para animación soft
+
 const app = createApp(App)
 
 app.use(createPinia())
+
+app.use(VueTippy, {
+  directive: 'tippy', // usaremos v-tippy
+  defaultProps: {
+    placement: 'top',
+    animation: 'shift-away',
+    theme: 'light-border',
+    arrow: true,
+  },
+})
 
 // El router necesita el authStore ya inicializado antes de sus guards,
 // por eso lo importamos y llamamos init() antes de montar.

@@ -7,8 +7,20 @@ const proveedoresStore = useProveedoresStore()
 
 let unsubProv
 
-onMounted(() => { unsubProv = proveedoresStore.subscribeProveedores() })
-onUnmounted(() => unsubProv?.())
+function onKeydown(e) {
+  if (e.key === 'Escape' && modalAbierto.value) {
+    modalAbierto.value = false
+  }
+}
+
+onMounted(() => {
+  unsubProv = proveedoresStore.subscribeProveedores()
+  window.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => {
+  unsubProv?.()
+  window.removeEventListener('keydown', onKeydown)
+})
 
 // ─── Modal nuevo proveedor ──────────────────────────────────────────────────
 const modalAbierto = ref(false)
@@ -82,6 +94,7 @@ async function guardar() {
       <div class="flex justify-end mb-4">
         <button
           @click="modalAbierto = true"
+          v-tippy="'Registrar un nuevo proveedor'"
           class="hidden md:inline-flex bg-green-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-green-600 transition-colors"
         >
           + Nuevo
@@ -189,6 +202,7 @@ async function guardar() {
             <button
               v-if="editandoId !== prov.id"
               @click="iniciarEdicion(prov)"
+              v-tippy="'Editar datos del proveedor'"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 transition-colors"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -199,12 +213,14 @@ async function guardar() {
             <template v-else>
               <button
                 @click="guardarEdicion(prov.id)"
+                v-tippy="'Guardar cambios'"
                 class="text-xs text-green-600 hover:text-green-700 font-semibold transition-colors"
               >
                 Guardar
               </button>
               <button
                 @click="cancelarEdicion"
+                v-tippy="'Cancelar edición'"
                 class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >
                 Cancelar
@@ -283,6 +299,7 @@ async function guardar() {
                     <button
                       v-if="editandoId !== prov.id"
                       @click="iniciarEdicion(prov)"
+                      v-tippy="'Editar datos del proveedor'"
                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 border border-gray-200 transition-colors"
                     >
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -293,12 +310,14 @@ async function guardar() {
                     <template v-else>
                       <button
                         @click="guardarEdicion(prov.id)"
+                        v-tippy="'Guardar cambios'"
                         class="text-xs text-green-600 hover:text-green-700 font-semibold transition-colors"
                       >
                         Guardar
                       </button>
                       <button
                         @click="cancelarEdicion"
+                        v-tippy="'Cancelar edición'"
                         class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         Cancelar
@@ -323,7 +342,18 @@ async function guardar() {
         class="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4"
         @click.self="modalAbierto = false"
       >
-        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+        <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl relative">
+          <!-- Botón Cerrar (X) -->
+          <button
+            @click="modalAbierto = false"
+            v-tippy="'Cerrar modal (Esc)'"
+            class="absolute top-4 right-4 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg p-1.5 transition-colors"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+
           <h3 class="text-base font-bold text-gray-800 mb-4">Nuevo proveedor</h3>
           <form @submit.prevent="guardar" class="space-y-3">
             <div>
@@ -341,13 +371,19 @@ async function guardar() {
               <input v-model="form.web_instagram" type="text" placeholder="@usuario o https://sitio.com"
                 class="w-full mt-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
             </div>
-            <div class="flex gap-3 pt-1">
-              <button type="button" @click="modalAbierto = false"
-                class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+            <div class="flex gap-3 pt-2">
+              <button type="button" @click="modalAbierto = false" v-tippy="'Descartar el registro'"
+                class="flex-1 inline-flex justify-center items-center gap-2 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
                 Cancelar
               </button>
-              <button type="submit"
-                class="flex-1 py-2.5 bg-green-500 text-white font-semibold rounded-xl text-sm hover:bg-green-600 transition-colors">
+              <button type="submit" v-tippy="'Registrar en el sistema'"
+                class="flex-1 inline-flex justify-center items-center gap-2 py-2.5 bg-green-500 text-white font-semibold rounded-xl text-sm hover:bg-green-600 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
                 Guardar
               </button>
             </div>

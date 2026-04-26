@@ -16,13 +16,14 @@ const route          = useRoute()
 const menuAbierto = ref(false)
 
 const todosItems = [
-  { path: '/ventas',        label: 'Ventas',      icon: '🛒', admin: false },
-  { path: '/graficos',      label: 'Graficos',    icon: '📈', admin: false },
-  { path: '/metricas',      label: 'Metricas',    icon: '📊', admin: true  },
-  { path: '/stock',         label: 'Stock',       icon: '📦', admin: false },
-  { path: '/proveedores',   label: 'Proveedores', icon: '🏭', admin: true  },
-  { path: '/compras',       label: 'Compras',     icon: '🛍️', admin: true  },
-  { path: '/cuentas-pagar', label: 'Cuentas',     icon: '💰', admin: true  },
+  { path: '/ventas',        label: 'Ventas',      icon: '🛒', admin: false, importante: true },
+  { path: '/stock',         label: 'Stock',       icon: '📦', admin: false, importante: true },
+  { path: '/compras',       label: 'Compras',     icon: '🛍️', admin: true,  importante: true },
+  { path: '/cuentas-pagar', label: 'Cuentas',     icon: '💰', admin: true,  importante: true },
+  { path: '/graficos',      label: 'Graficos',    icon: '📈', admin: false, importante: false },
+  { path: '/proveedores',   label: 'Proveedores', icon: '🏭', admin: true,  importante: false },
+  { path: '/usuarios',      label: 'Usuarios',    icon: '👥', admin: true,  importante: false },
+  { path: '/metricas',      label: 'Metricas',    icon: '📊', admin: true,  importante: false },
 ]
 
 const itemsVisibles = computed(() =>
@@ -71,20 +72,25 @@ async function handleLogout() {
       </div>
 
       <!-- Desktop: links compactos -->
-      <div class="hidden md:flex items-center gap-0.5">
+      <div class="hidden md:flex items-center space-x-1 lg:space-x-1.5 overflow-hidden">
         <router-link
           v-for="item in itemsVisibles"
           :key="item.path"
           :to="item.path"
+          v-tippy="!item.importante ? item.label : undefined"
           :class="[
-            'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+            'flex items-center justify-center rounded-xl text-[13px] font-medium transition-all duration-200 border whitespace-nowrap gap-1.5',
             route.path === item.path
-              ? 'bg-white/45 text-green-950 font-semibold'
-              : 'text-green-900 hover:bg-white/25 hover:text-green-950',
+              ? 'bg-white/60 text-green-950 font-bold border-white/40 shadow-sm'
+              : 'text-green-950 border-transparent hover:bg-white/30 hover:border-white/20',
+            item.importante ? 'px-3 py-1.5' : 'w-8 h-8'
           ]"
         >
-          <span class="text-sm">{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
+          <span v-if="!item.importante" class="text-base leading-none">{{ item.icon }}</span>
+          <template v-else>
+            <span class="text-base leading-none">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+          </template>
         </router-link>
       </div>
 
@@ -124,21 +130,21 @@ async function handleLogout() {
         </router-link>
 
         <!-- Separador -->
-        <div class="w-px h-5 bg-green-800/30 mx-0.5"></div>
+        <div class="w-px h-5 bg-green-800/30 mx-0.5 md:mr-1"></div>
 
         <!-- Usuario -->
-        <span class="text-xs text-green-900 truncate max-w-[140px]">
-          {{ authStore.perfil?.nombre || authStore.user?.email?.split('@')[0] }}
-          <span class="ml-1 bg-green-900/15 px-1.5 py-0.5 rounded text-[10px]">
-            {{ authStore.isAdmin ? 'Admin' : 'Cajero' }}
-          </span>
+        <span class="text-[13px] font-semibold text-green-950 truncate max-w-[120px]">
+          {{ authStore.perfil?.nombre?.split(' ')[0] || authStore.user?.email?.split('@')[0] }}
         </span>
 
         <!-- Salir -->
         <button
           @click="handleLogout"
-          class="text-xs bg-green-900/20 hover:bg-green-900/35 border border-green-900/30 px-2.5 py-1 rounded-lg font-semibold text-green-950 transition-colors"
+          class="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-bold bg-white/20 hover:bg-white/40 text-green-950 border border-green-800/20 hover:border-green-800/40 shadow-sm transition-all focus:ring-2 focus:ring-green-900/20"
         >
+          <svg class="w-4 h-4 opacity-80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+          </svg>
           Salir
         </button>
       </div>
