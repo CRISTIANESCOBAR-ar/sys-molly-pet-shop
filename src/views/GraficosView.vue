@@ -4,18 +4,22 @@ import NavBar from '@/components/NavBar.vue'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useVentasStore } from '@/stores/useVentasStore'
 import { useComprasStore } from '@/stores/useComprasStore'
+import { useProductosStore } from '@/stores/useProductosStore'
 
 const authStore = useAuthStore()
 const ventasStore = useVentasStore()
 const comprasStore = useComprasStore()
+const productosStore = useProductosStore()
 
 const hoy = new Date()
 const periodo = ref({ year: hoy.getFullYear(), month: hoy.getMonth() + 1 })
 const modo = ref('ventas')
+const tab = ref('general')
 const loading = ref(true)
 
 let unsubVentas
 let unsubCompras
+let unsubProductos
 
 const periodoLabel = computed(() => {
   const d = new Date(periodo.value.year, periodo.value.month - 1, 1)
@@ -27,8 +31,8 @@ const esMesActual = computed(() =>
 )
 
 const modosDisponibles = computed(() => {
-  const items = [{ value: 'ventas', label: 'Ventas', icon: '🛒' }]
-  if (authStore.isAdmin) items.push({ value: 'compras', label: 'Compras', icon: '🛍️' })
+  const items = [{ value: 'ventas', label: 'Ventas', icon: '🛒', desc: 'Ver rentabilidad en base a ventas' }]
+  if (authStore.isAdmin) items.push({ value: 'compras', label: 'Compras', icon: '🛍️', desc: 'Ver proyección en base a gastos a proveedores' })
   return items
 })
 
@@ -116,6 +120,62 @@ const topDias = computed(() =>
     .sort((a, b) => b.total - a.total)
     .slice(0, 5),
 )
+
+const rankingProductos = computed(() => {
+  const map = new Map()
+  
+  // Usamos ventas para el ranking de productos ("lo que más se vende y más deja")
+  const ventas = ventasStore.ventas.filter(v => v.estado !== 'anulada')
+
+  for (const v of ventas) {
+    const fecha = normalizarFecha(v.creado_en || v.fecha)
+    if (!fecha) continue
+    
+    // 0 = Domingo, 6 = Sábado
+    const esFinde = fecha.getDay() === 0 || fecha.getDay() === 6
+
+    for (const item of (v.items || [])) {
+      if (!map.has(item.id)) {
+        // Buscar el producto en el store para obtener su costo real actual
+        // Nota: Si el costo historico cambió, esto usará el costo actual. Para un margen 100% exacto 
+        // historico deberíamos guardar el costo_unitario en el ticket de venta, pero esto sirve de aproximación.
+        const bdProd = productosStore.productos.find(p => p.id === item.id)
+        
+        map.set(item.id, {
+          id: item.id,
+          nombre: item.nombre || bdProd?.nombre || 'Producto sin nombre',
+          qty: 0,
+          ingresos: 0,
+          costoUnitario: Number(bdProd?.precio_compra) || 0,
+          qtyFindes: 0
+        })
+      }
+      
+      const stat = map.get(item.id)
+      const cant = Number(item.qty || 1)
+      const sub = Number(item.subtotal || (item.precio_unitario * cant) || 0)
+      
+      stat.qty += cant
+      stat.ingresos += sub
+      if (esFinde) {
+        stat.qtyFindes += cant
+      }
+    }
+  }
+
+  const arrayStats = Array.from(map.values()).map(p => {
+    p.costoTotal = p.qty * p.costoUnitario
+    p.gananciaNeta = p.ingresos - p.costoTotal
+    p.margenPct = p.costoTotal > 0 ? (p.gananciaNeta / p.costoTotal) * 100 : 100 // Si no hay costo, ganancia full
+    return p
+  })
+
+  return {
+    masVendidos: [...arrayStats].sort((a, b) => b.qty - a.qty).slice(0, 10),
+    masRentables: [...arrayStats].sort((a, b) => b.gananciaNeta - a.gananciaNeta).slice(0, 10),
+    estrellasFinde: [...arrayStats].filter(p => p.qtyFindes > 0).sort((a, b) => b.qtyFindes - a.qtyFindes).slice(0, 10)
+  }
+})
 
 const lineChart = computed(() => {
   const puntos = serieActiva.value.puntos
@@ -224,7 +284,10 @@ watch(() => authStore.isAdmin, esAdmin => {
   if (!esAdmin && modo.value === 'compras') modo.value = 'ventas'
 })
 
-onMounted(resuscribir)
+onMounted(() => {
+  unsubProductos = productosStore.subscribe?.() || (() => {})
+  resuscribir()
+})
 
 const tooltipMonto = `
 <div class="text-left text-gray-800 p-1 w-64 md:w-72 font-sans font-medium">
@@ -273,6 +336,7 @@ const tooltipRitmo = `
 onUnmounted(() => {
   unsubVentas?.()
   unsubCompras?.()
+  unsubProductos?.()
 })
 </script>
 
@@ -290,17 +354,42 @@ onUnmounted(() => {
               <!-- Izquierda: Titulo y Botones -->
               <div class="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4">
                 <div class="flex-shrink-0">
-                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.18em] text-green-600 leading-none">Analitica diaria</p>
-                  <h1 class="text-lg md:text-xl font-bold text-gray-900 leading-none -mt-1">Ventas y compras por dia</h1>
+                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.18em] text-green-600 leading-none">Analítica diaria</p>
+                  <h1 class="text-lg md:text-xl font-bold text-gray-900 leading-none mt-1">Estadísticas del mes</h1>
                 </div>
 
+                <!-- Tabs: General / Productos -->
                 <div class="inline-flex flex-col gap-1 rounded-xl bg-gray-100 p-1 flex-shrink-0 self-start sm:self-auto">
+                  <button
+                    @click="tab = 'general'"
+                    v-tippy="'Ver curvas de estadísticas de dinero y cantidad de operaciones'"
+                    :class="[
+                      'px-2 py-1.5 rounded-lg text-sm font-bold transition-colors text-left',
+                      tab === 'general' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                    ]"
+                  >
+                    📊 General
+                  </button>
+                  <button
+                    @click="tab = 'productos'"
+                    v-tippy="'Descubrir qué productos arrojan mayor ganancia y volumen'"
+                    :class="[
+                      'px-2 py-1.5 rounded-lg text-sm font-bold transition-colors text-left',
+                      tab === 'productos' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                    ]"
+                  >
+                    🏆 Productos
+                  </button>
+                </div>
+
+                <div v-show="tab === 'general'" class="inline-flex flex-col gap-1 rounded-xl bg-gray-100 p-1 flex-shrink-0 self-start sm:self-auto ml-0 md:ml-2">
                   <button
                     v-for="item in modosDisponibles"
                     :key="item.value"
                     @click="modo = item.value"
+                    v-tippy="item.desc"
                     :class="[
-                      'px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors text-left',
+                      'px-2 py-1.5 rounded-lg text-sm font-semibold transition-colors text-left',
                       modo === item.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
                     ]"
                   >
@@ -310,22 +399,22 @@ onUnmounted(() => {
               </div>
 
               <!-- Centro: Stats (Kpis) en linea -->
-              <div class="flex items-center gap-3 md:gap-4 overflow-x-auto hide-scrollbar pb-1 xl:pb-0 flex-1 xl:justify-center">
+              <div class="flex items-center gap-2.5 md:gap-3 overflow-x-auto hide-scrollbar pb-1 xl:pb-0 flex-1 xl:justify-center">
                 <div class="flex-shrink-0">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-gray-400">Total mes</p>
-                  <p class="text-base md:text-lg font-bold text-green-700 mt-0.5">${{ serieActiva.totalMes.toLocaleString('es-AR') }}</p>
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Total mes</p>
+                  <p class="text-sm md:text-[15px] font-bold text-green-700 mt-0.5">${{ serieActiva.totalMes.toLocaleString('es-AR') }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-3 md:pl-4 border-l border-gray-100">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-gray-400">Operaciones</p>
-                  <p class="text-base md:text-lg font-bold text-gray-900 mt-0.5">{{ serieActiva.operaciones }}</p>
+                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Operaciones</p>
+                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">{{ serieActiva.operaciones }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-3 md:pl-4 border-l border-gray-100">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-gray-400">Promedio activo</p>
-                  <p class="text-base md:text-lg font-bold text-gray-900 mt-0.5">${{ Math.round(serieActiva.promedioDiaActivo).toLocaleString('es-AR') }}</p>
+                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Prom. activo</p>
+                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">${{ Math.round(serieActiva.promedioDiaActivo).toLocaleString('es-AR') }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-3 md:pl-4 border-l border-gray-100 xl:border-r xl:pr-4">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-gray-400">Mejor dia ({{ serieActiva.mejorDia.day || '—' }})</p>
-                  <p class="text-base md:text-lg font-bold text-gray-900 mt-0.5">${{ (serieActiva.mejorDia.total ?? 0).toLocaleString('es-AR') }}</p>
+                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100 xl:border-r xl:pr-3">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Mejor dia ({{ serieActiva.mejorDia.day || '—' }})</p>
+                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">${{ (serieActiva.mejorDia.total ?? 0).toLocaleString('es-AR') }}</p>
                 </div>
               </div>
 
@@ -378,7 +467,9 @@ onUnmounted(() => {
           </section>
 
           <template v-else>
-            <section class="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-3 md:gap-4">
+            <!-- TAB GENERAL -->
+            <div v-if="tab === 'general'" class="space-y-3 md:space-y-4">
+              <section class="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-3 md:gap-4">
               <article class="flex flex-col rounded-2xl bg-white border border-gray-100 shadow-sm p-3 md:p-4">
                 <div class="flex items-start justify-between gap-3 mb-2 flex-shrink-0">
                   <div>
@@ -538,6 +629,65 @@ onUnmounted(() => {
                 </article>
               </div>
             </section>
+            </div>
+
+            <!-- TAB PRODUCTOS -->
+            <div v-else-if="tab === 'productos'" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+              <!-- Más Vendidos -->
+              <section class="rounded-2xl border border-gray-100 shadow-sm bg-white p-4">
+                <div class="mb-4">
+                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.16em] text-green-600">Top 10 Mensual</p>
+                  <h3 class="text-base md:text-lg font-bold text-gray-900 border-b pb-2 mb-2">Más vendidos (Unidades)</h3>
+                </div>
+                <div v-if="rankingProductos.masVendidos.length === 0" class="text-xs text-gray-400 italic">Sin datos</div>
+                <ul class="space-y-2">
+                  <li v-for="(prod, i) in rankingProductos.masVendidos" :key="prod.id" class="flex items-center gap-3">
+                    <span class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg bg-green-100 text-green-800 text-xs font-bold">{{ i + 1 }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-semibold text-gray-800 truncate">{{ prod.nombre }}</p>
+                    </div>
+                    <span class="flex-shrink-0 text-sm font-bold text-gray-900 text-right">{{ prod.qty }}</span>
+                  </li>
+                </ul>
+              </section>
+
+              <!-- Mayor Ganancia -->
+              <section class="rounded-2xl border border-gray-100 shadow-sm bg-white p-4">
+                <div class="mb-4">
+                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Top 10 Rentabilidad</p>
+                  <h3 class="text-base md:text-lg font-bold text-gray-900 border-b pb-2 mb-2">Más ganancia neta</h3>
+                </div>
+                <div v-if="rankingProductos.masRentables.length === 0" class="text-xs text-gray-400 italic">Sin datos</div>
+                <ul class="space-y-2">
+                  <li v-for="(prod, i) in rankingProductos.masRentables" :key="prod.id" class="flex items-center gap-3">
+                    <span class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg bg-blue-100 text-blue-800 text-xs font-bold">{{ i + 1 }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-semibold text-gray-800 truncate">{{ prod.nombre }}</p>
+                      <p class="text-[10px] text-gray-500 truncate" v-if="prod.margenPct < 100">Margen: {{ Math.round(prod.margenPct) }}%</p>
+                    </div>
+                    <span class="flex-shrink-0 text-sm font-bold text-gray-900 text-right text-blue-600">${{ Math.round(prod.gananciaNeta).toLocaleString('es-AR') }}</span>
+                  </li>
+                </ul>
+              </section>
+
+              <!-- Estrellas Fin de semana -->
+              <section class="rounded-2xl border border-gray-100 shadow-sm bg-white p-4">
+                <div class="mb-4">
+                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.16em] text-amber-600">Top 10 Sáb y Dom</p>
+                  <h3 class="text-base md:text-lg font-bold text-gray-900 border-b pb-2 mb-2">Estrellas del fin de semana</h3>
+                </div>
+                <div v-if="rankingProductos.estrellasFinde.length === 0" class="text-xs text-gray-400 italic">Sin datos</div>
+                <ul class="space-y-2">
+                  <li v-for="(prod, i) in rankingProductos.estrellasFinde" :key="prod.id" class="flex items-center gap-3">
+                    <span class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg bg-amber-100 text-amber-800 text-xs font-bold">{{ i + 1 }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-semibold text-gray-800 truncate">{{ prod.nombre }}</p>
+                    </div>
+                    <span class="flex-shrink-0 text-sm font-bold text-gray-900 text-right">{{ prod.qtyFindes }}</span>
+                  </li>
+                </ul>
+              </section>
+            </div>
           </template>
         </template>
       </div>
