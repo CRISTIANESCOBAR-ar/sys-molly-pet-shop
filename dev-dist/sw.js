@@ -70,7 +70,7 @@ if (!self.define) {
 define(['./workbox-a068865c'], (function (workbox) { 'use strict';
 
   workbox.setCacheNameDetails({
-    prefix: "molly-1777168319765"
+    prefix: "molly-1777216385134"
   });
   self.skipWaiting();
   workbox.clientsClaim();
@@ -85,7 +85,7 @@ define(['./workbox-a068865c'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.irt1bo27i38"
+    "revision": "0.pik2g4hkkd4"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {

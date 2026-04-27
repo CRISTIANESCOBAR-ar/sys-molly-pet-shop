@@ -16,6 +16,7 @@ const periodo = ref({ year: hoy.getFullYear(), month: hoy.getMonth() + 1 })
 const modo = ref('ventas')
 const tab = ref('general')
 const loading = ref(true)
+const diaActivoTooltip = ref(null)
 
 let unsubVentas
 let unsubCompras
@@ -260,8 +261,16 @@ function generarTooltipHorarios(punto) {
   return `
     <div class="p-2 md:p-3 w-72 md:w-80">
       <div class="flex justify-between items-center mb-1">
-        <h4 class="text-sm font-bold text-gray-800">Horarios de concurrencia</h4>
-        <span class="text-xs font-semibold text-gray-500">${punto.weekDayName} ${punto.day}</span>
+        <button onclick="document.dispatchEvent(new CustomEvent('nav-grafico', {detail: ${punto.day - 1}}))" class="p-1 hover:bg-gray-100 rounded text-gray-500 transition-colors">
+           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+        <div class="text-center">
+            <h4 class="text-sm font-bold text-gray-800">Horarios de concurrencia</h4>
+            <span class="text-xs font-semibold text-gray-500">${punto.weekDayName} ${punto.day}</span>
+        </div>
+        <button onclick="document.dispatchEvent(new CustomEvent('nav-grafico', {detail: ${punto.day + 1}}))" class="p-1 hover:bg-gray-100 rounded text-gray-500 transition-colors">
+           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+        </button>
       </div>
       <div class="flex items-center justify-between mb-3">
         <div class="text-xs text-green-700 font-bold flex items-center bg-green-50 px-2 py-1 rounded w-fit gap-2">
@@ -284,7 +293,34 @@ watch(() => authStore.isAdmin, esAdmin => {
   if (!esAdmin && modo.value === 'compras') modo.value = 'ventas'
 })
 
+function navegarTooltip(dir) {
+  if (diaActivoTooltip.value === null) return
+  const nextDay = diaActivoTooltip.value + dir
+  const currentEl = document.getElementById(`dia-grafico-${diaActivoTooltip.value}`)
+  const nextEl = document.getElementById(`dia-grafico-${nextDay}`)
+  
+  if (nextEl && nextEl._tippy) {
+    if (currentEl && currentEl._tippy) {
+      currentEl._tippy.hide()
+    }
+    nextEl._tippy.show()
+  }
+}
+
+function handleKeydown(e) {
+  if (diaActivoTooltip.value === null) return
+  if (e.key === 'ArrowLeft') navegarTooltip(-1)
+  if (e.key === 'ArrowRight') navegarTooltip(1)
+}
+
+function handleNavGrafico(e) {
+  const dir = e.detail - diaActivoTooltip.value
+  navegarTooltip(dir)
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+  document.addEventListener('nav-grafico', handleNavGrafico)
   unsubProductos = productosStore.subscribe?.() || (() => {})
   resuscribir()
 })
@@ -334,6 +370,8 @@ const tooltipRitmo = `
 `
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('nav-grafico', handleNavGrafico)
   unsubVentas?.()
   unsubCompras?.()
   unsubProductos?.()
@@ -347,79 +385,79 @@ onUnmounted(() => {
     <main class="flex-1 min-h-0 overflow-y-auto">
       <div class="w-full max-w-[1600px] mx-auto relative px-2 md:px-4">
         
-        <div class="sticky top-0 z-20 bg-gray-50 pt-2 md:pt-4 pb-2 md:pb-3">
-          <section class="rounded-2xl bg-white border border-gray-200 shadow-md p-3 md:p-4">
-            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 lg:gap-4">
+        <!-- Desktop Sticky / Mobile Normal -->
+        <div class="md:sticky md:top-0 md:z-20 bg-gray-50 pt-1 md:pt-4 pb-1 md:pb-3">
+          <section class="rounded-2xl bg-white border border-gray-200 shadow-md p-2.5 md:p-4 mb-2 md:mb-0">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between flex-wrap gap-3 lg:gap-4">
               
               <!-- Izquierda: Titulo y Botones -->
-              <div class="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4">
-                <div class="flex-shrink-0">
-                  <p class="text-[10px] md:text-xs font-semibold uppercase tracking-[0.18em] text-green-600 leading-none">Analítica diaria</p>
-                  <h1 class="text-lg md:text-xl font-bold text-gray-900 leading-none mt-1">Estadísticas del mes</h1>
+              <div class="flex flex-col md:flex-row md:items-center gap-1.5 md:gap-4 flex-shrink-0">
+                <div class="flex items-center md:items-start gap-1.5 md:gap-0 md:flex-col shrink-0">
+                  <p class="text-[10px] md:text-xs font-bold md:font-semibold uppercase tracking-[0.18em] text-green-600 leading-none">Analítica diaria</p>
+                  <span class="md:hidden text-gray-300">|</span>
+                  <h1 class="text-[15px] md:text-xl font-bold text-gray-900 leading-none md:mt-1">Estadísticas del mes</h1>
                 </div>
 
-                <!-- Tabs: General / Productos -->
-                <div class="inline-flex flex-col gap-1 rounded-xl bg-gray-100 p-1 flex-shrink-0 self-start sm:self-auto">
+                <!-- Contenedor unificado para Tabs y Modos en una sola fila -->
+                <div class="flex items-center gap-1 rounded-xl bg-gray-100 p-1 w-full md:w-auto">
                   <button
                     @click="tab = 'general'"
-                    v-tippy="'Ver curvas de estadísticas de dinero y cantidad de operaciones'"
                     :class="[
-                      'px-2 py-1.5 rounded-lg text-sm font-bold transition-colors text-left',
+                      'flex-1 px-1 py-1.5 rounded-lg text-[11px] sm:text-sm font-bold transition-colors flex items-center justify-center gap-1',
                       tab === 'general' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
                     ]"
                   >
-                    📊 General
+                    <span>📊</span><span class="truncate">General</span>
                   </button>
                   <button
                     @click="tab = 'productos'"
-                    v-tippy="'Descubrir qué productos arrojan mayor ganancia y volumen'"
                     :class="[
-                      'px-2 py-1.5 rounded-lg text-sm font-bold transition-colors text-left',
+                      'flex-1 px-1 py-1.5 rounded-lg text-[11px] sm:text-sm font-bold transition-colors flex items-center justify-center gap-1',
                       tab === 'productos' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
                     ]"
                   >
-                    🏆 Productos
+                    <span>🏆</span><span class="truncate">Productos</span>
                   </button>
-                </div>
 
-                <div v-show="tab === 'general'" class="inline-flex flex-col gap-1 rounded-xl bg-gray-100 p-1 flex-shrink-0 self-start sm:self-auto ml-0 md:ml-2">
+                  <div v-show="tab === 'general'" class="w-[1px] h-4 bg-gray-300 mx-0.5"></div>
+
                   <button
+                    v-show="tab === 'general'"
                     v-for="item in modosDisponibles"
                     :key="item.value"
                     @click="modo = item.value"
-                    v-tippy="item.desc"
                     :class="[
-                      'px-2 py-1.5 rounded-lg text-sm font-semibold transition-colors text-left',
+                      'flex-1 px-1 py-1.5 rounded-lg text-[11px] sm:text-sm font-semibold transition-colors flex items-center justify-center gap-1',
                       modo === item.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
                     ]"
                   >
-                    <span class="mr-1">{{ item.icon }}</span>{{ item.label }}
+                    <span>{{ item.icon }}</span><span class="truncate">{{ item.label }}</span>
                   </button>
                 </div>
               </div>
 
               <!-- Centro: Stats (Kpis) en linea -->
-              <div class="flex items-center gap-2.5 md:gap-3 overflow-x-auto hide-scrollbar pb-1 xl:pb-0 flex-1 xl:justify-center">
-                <div class="flex-shrink-0">
-                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Total mes</p>
-                  <p class="text-sm md:text-[15px] font-bold text-green-700 mt-0.5">${{ serieActiva.totalMes.toLocaleString('es-AR') }}</p>
+              <div class="grid grid-cols-2 md:flex md:flex-wrap md:items-center justify-center gap-1.5 md:gap-3 flex-1 mt-1 lg:mt-0 min-w-0">
+                <div class="bg-gray-50 md:bg-transparent px-2 py-1 md:p-0 rounded-md md:rounded-none flex items-baseline justify-between md:block min-w-0">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400 truncate">Total mes</p>
+                  <p class="text-[13px] md:text-[15px] font-bold text-green-700 mt-0 md:mt-0.5 truncate">${{ serieActiva.totalMes.toLocaleString('es-AR') }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100">
-                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Operaciones</p>
-                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">{{ serieActiva.operaciones }}</p>
+                <div class="bg-gray-50 md:bg-transparent px-2 py-1 md:p-0 rounded-md md:rounded-none flex items-baseline justify-between md:block md:border-l border-gray-100 md:pl-3 min-w-0">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400 truncate">Operaciones</p>
+                  <p class="text-[13px] md:text-[15px] font-bold text-gray-900 mt-0 md:mt-0.5 truncate">{{ serieActiva.operaciones }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100">
-                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Prom. activo</p>
-                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">${{ Math.round(serieActiva.promedioDiaActivo).toLocaleString('es-AR') }}</p>
+                <div class="bg-gray-50 md:bg-transparent px-2 py-1 md:p-0 rounded-md md:rounded-none flex items-baseline justify-between md:block md:border-l border-gray-100 md:pl-3 min-w-0">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400 truncate mr-1">Prom. activo</p>
+                  <p class="text-[13px] md:text-[15px] font-bold text-gray-900 mt-0 md:mt-0.5 truncate">${{ Math.round(serieActiva.promedioDiaActivo).toLocaleString('es-AR') }}</p>
                 </div>
-                <div class="flex-shrink-0 pl-2.5 md:pl-3 border-l border-gray-100 xl:border-r xl:pr-3">
-                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400">Mejor dia ({{ serieActiva.mejorDia.day || '—' }})</p>
-                  <p class="text-sm md:text-[15px] font-bold text-gray-900 mt-0.5">${{ (serieActiva.mejorDia.total ?? 0).toLocaleString('es-AR') }}</p>
+                <div class="bg-gray-50 md:bg-transparent px-2 py-1 md:p-0 rounded-md md:rounded-none flex items-baseline justify-between md:block md:border-l border-gray-100 md:pl-3 lg:border-r lg:pr-3 min-w-0">
+                  <p class="text-[9px] md:text-[10px] uppercase tracking-[0.16em] text-gray-400 truncate mr-1">Mejor dia ({{ serieActiva.mejorDia.day || '—' }})</p>
+                  <p class="text-[13px] md:text-[15px] font-bold text-gray-900 mt-0 md:mt-0.5 truncate">${{ (serieActiva.mejorDia.total ?? 0).toLocaleString('es-AR') }}</p>
                 </div>
               </div>
 
-              <!-- Derecha: Paginador de mes -->
-              <div class="flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-100 px-2 py-1.5 min-w-[200px] flex-shrink-0 mt-1 xl:mt-0">
+              <!-- Derecha: Paginador de mes (Visible Desktop) -->
+              <div class="hidden md:flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-100 px-2 py-1.5 min-w-[200px] flex-shrink-0 mt-1 lg:mt-0">
                 <button
                   @click="anteriorMes"
                   v-tippy="'Mes anterior'"
@@ -449,6 +487,21 @@ onUnmounted(() => {
               </div>
             </div>
           </section>
+        </div>
+
+        <!-- Sticky Paginador Mobile -->
+        <div class="md:hidden sticky top-0 z-20 bg-gray-50 pb-2">
+          <div class="flex items-center justify-between gap-2 rounded-xl bg-white border border-gray-200 shadow-md px-3 py-2">
+            <button @click="anteriorMes" class="w-9 h-9 flex items-center justify-center rounded-lg bg-gray-50 border border-gray-200 text-gray-700 active:bg-gray-200 transition-colors" aria-label="Mes anterior">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6" /></svg>
+            </button>
+            <div class="text-center min-w-0 flex-1 px-2">
+              <p class="text-[15px] font-black text-gray-900 capitalize truncate leading-none">{{ periodoLabel }}</p>
+            </div>
+            <button @click="siguienteMes" :disabled="esMesActual" class="w-9 h-9 flex items-center justify-center rounded-lg bg-gray-50 border border-gray-200 text-gray-700 active:bg-gray-200 transition-colors disabled:opacity-30" aria-label="Mes siguiente">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" /></svg>
+            </button>
+          </div>
         </div>
 
         <div class="space-y-3 pb-3 md:space-y-4 md:pb-4">
@@ -514,8 +567,22 @@ onUnmounted(() => {
                     <div
                       v-for="point in serieActiva.puntos"
                       :key="`label-${point.day}`"
+                      :id="`dia-grafico-${point.day}`"
                       class="flex-1 flex flex-col items-center justify-end text-center min-w-0 cursor-help"
-                      v-tippy="{ content: generarTooltipHorarios(point), allowHTML: true, placement: 'top', theme: 'light-border', interactive: true, interactiveBorder: 5, delay: [50, 0], duration: [150, 0], maxWidth: 'none', offset: [0, 8] }"
+                      v-tippy="{ 
+                        content: generarTooltipHorarios(point), 
+                        allowHTML: true, 
+                        placement: 'top', 
+                        theme: 'light-border', 
+                        interactive: true, 
+                        interactiveBorder: 5, 
+                        delay: [50, 0], 
+                        duration: [150, 0], 
+                        maxWidth: 'none', 
+                        offset: [0, 8],
+                        onShow: () => { diaActivoTooltip = point.day },
+                        onHide: () => { if (diaActivoTooltip === point.day) diaActivoTooltip = null }
+                      }"
                     >
                       <span
                         class="text-[8px] md:text-[9px] font-bold leading-none mb-0.5"
@@ -623,7 +690,7 @@ onUnmounted(() => {
                   :key="dia.day"
                   class="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-4"
                 >
-                  <p class="text-xs uppercase tracking-[0.14em] text-gray-400">Dia {{ dia.day }}</p>
+                  <p class="text-xs capitalize tracking-wide text-gray-500">Día {{ dia.weekDayName }} {{ dia.day }}</p>
                   <p class="text-xl font-bold text-gray-900 mt-2">${{ dia.total.toLocaleString('es-AR') }}</p>
                   <p class="text-sm text-gray-500 mt-1">{{ dia.count }} operaciones</p>
                 </article>
