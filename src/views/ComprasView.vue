@@ -138,6 +138,10 @@ function seleccionarProducto(prod) {
   mostrarSugerencias.value = false
 }
 
+function ocultarSugerencias() {
+  setTimeout(() => mostrarSugerencias.value = false, 150)
+}
+
 const guardando  = ref(false)
 const exitoGuard = ref(false)
 const enColaGuard = ref(false)
@@ -307,7 +311,7 @@ async function eliminarCompra(compra) {
             <input
               v-model="busquedaProducto"
               @input="mostrarSugerencias = true; form.nombre = busquedaProducto"
-              @blur="setTimeout(() => mostrarSugerencias = false, 150)"
+              @blur="ocultarSugerencias"
               @focus="mostrarSugerencias = true"
               type="text"
               placeholder="Buscar o escribir nombre..."
