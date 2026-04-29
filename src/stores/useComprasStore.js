@@ -125,7 +125,7 @@ export const useComprasStore = defineStore('compras', () => {
           where('nombre', '==', nombreNormalizado),
           limit(1),
         )
-        const prodSnap = await tx.get(qProd)
+        const prodSnap = await getDocs(qProd)
         if (!prodSnap.empty) productoRef = prodSnap.docs[0].ref
       }
 
@@ -190,7 +190,7 @@ export const useComprasStore = defineStore('compras', () => {
           where('nombre', '==', nombreBusqueda),
           limit(1),
         )
-        const prodSnap = await tx.get(qProd)
+        const prodSnap = await getDocs(qProd)
         if (!prodSnap.empty) productoRef = prodSnap.docs[0].ref
       }
 
