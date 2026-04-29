@@ -198,7 +198,15 @@ async function guardarCompra() {
       enColaGuard.value = true
       setTimeout(() => { enColaGuard.value = false }, 6000)
     } else {
-      errorGuard.value = e.message || 'Error al guardar'
+      console.error('Error interno al registrar compra:', e)
+      const msg = (e.message || '').toLowerCase()
+      if (msg.includes('path') || msg.includes('undefined') || msg.includes('no se encontró')) {
+        errorGuard.value = 'Revisa que hayas seleccionado correctamente el producto de la lista.'
+      } else if (msg.includes('permission') || msg.includes('privilegios') || msg.includes('role')) {
+        errorGuard.value = 'Tu cuenta no tiene permisos para realizar esta acción.'
+      } else {
+        errorGuard.value = 'Ocurrió un problema inesperado al guardar. Por favor, intentá nuevamente.'
+      }
     }
   } finally {
     guardando.value = false
