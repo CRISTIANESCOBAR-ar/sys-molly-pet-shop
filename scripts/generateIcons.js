@@ -4,12 +4,13 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const SRC   = join('C:\\Users\\crist\\Downloads\\Molly.png')
+const SRC_SIMPLE = join(__dirname, '..', 'public', 'Molly_Simple.png')
+const SRC_BANNER = join(__dirname, '..', 'public', 'Molly_Banner_Publicidad.tiff')
 const DEST  = join(__dirname, '..', 'public', 'icons')
 
 async function main() {
   // 1. Recortar espacio blanco automáticamente, dejar un padding del 0%
-  const trimmed = await sharp(SRC)
+  const trimmed = await sharp(SRC_SIMPLE)
     .trim({ background: '#ffffff', threshold: 10 })
     .toBuffer()
 
@@ -45,12 +46,22 @@ async function main() {
 
   // favicon-32 para el <link rel="icon" sizes="32x32">
   await sharp(trimmed)
-    .resize(32, 32, { fit: 'contain', background: '#62ef4f' })
+    .resize(32, 32, { fit: 'contain', background: '#ffffff' })
     .png()
     .toFile(join(DEST, 'favicon-32.png'))
   console.log('✓ favicon-32.png (32x32)')
 
-  console.log('\nTodos los íconos generados en public/icons/')
+  // 2. Procesar el banner (Molly_Banner_Publicidad.tiff)
+  // Recortar y ajustar para mostrar lo central y generar versión .webp
+  await sharp(SRC_BANNER)
+    // El extract dependerá de las verdaderas dimensiones del TIFF.
+    // Usamos resize + crop (cover) centrado para que quede un rectangulo horizontal para el splash
+    .resize(800, 450, { fit: 'cover', position: 'attention' })
+    .webp({ quality: 90 })
+    .toFile(join(__dirname, '..', 'public', 'splash_banner.webp'))
+  console.log('✓ splash_banner.webp (800x450)')
+
+  console.log('\nTodos los íconos generados correctamente.')
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

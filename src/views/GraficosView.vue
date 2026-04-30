@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import ExcelJS from 'exceljs'
 import NavBar from '@/components/NavBar.vue'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useVentasStore } from '@/stores/useVentasStore'
@@ -376,6 +377,394 @@ onUnmounted(() => {
   unsubCompras?.()
   unsubProductos?.()
 })
+
+// ─── Exportación a Excel ───────────────────────────────────────────────────
+const exportando = ref(false)
+
+function nombreMesArchivo() {
+  const m = String(periodo.value.month).padStart(2, '0')
+  return `${periodo.value.year}-${m}`
+}
+
+const FMT_ARS = '"$"#,##0.00;[Red]-"$"#,##0.00'
+const FMT_INT = '#,##0'
+const FMT_QTY = '#,##0.###'
+const FMT_DATE = 'dd/mm/yyyy'
+const FMT_TIME = 'hh:mm'
+
+function descargarBlob(buffer, filename) {
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
+}
+
+/**
+ * Aplica formato profesional a una hoja: cabecera azul + bandas + bordes + impresión A4.
+ * cols: [{ key, label, type: 'date'|'time'|'money'|'int'|'qty'|'text', width? }]
+ * rows: array de objetos
+ * totalsRow: { [key]: value } opcional
+ */
+function configurarHoja(ws, cols, rows, totalsRow = null, opciones = {}) {
+  const titulo = opciones.titulo || ws.name
+
+  // ── Fuente base
+  ws.properties.defaultRowHeight = 16
+
+  // ── Definir columnas
+  ws.columns = cols.map(c => {
+    let width = c.width
+    if (!width) {
+      let max = (c.label || '').length
+      for (const r of rows) {
+        const v = r[c.key]
+        if (v == null) continue
+        let len = 10
+        if (v instanceof Date) {
+          len = c.type === 'time' ? 6 : 11
+        } else {
+          len = String(v).length
+          if (c.type === 'money') len = Math.max(len, 12)
+        }
+        if (len > max) max = len
+      }
+      width = Math.min(Math.max(max + 2, 10), 38)
+    }
+    let numFmt
+    switch (c.type) {
+      case 'date':  numFmt = FMT_DATE; break
+      case 'time':  numFmt = FMT_TIME; break
+      case 'money': numFmt = FMT_ARS;  break
+      case 'int':   numFmt = FMT_INT;  break
+      case 'qty':   numFmt = FMT_QTY;  break
+    }
+    return {
+      key: c.key,
+      header: c.label,
+      width,
+      style: numFmt ? { numFmt, font: { name: 'Calibri', size: 10 } } : { font: { name: 'Calibri', size: 10 } }
+    }
+  })
+
+  // ── Estilo cabecera
+  const headerRow = ws.getRow(1)
+  headerRow.height = 22
+  headerRow.eachCell(cell => {
+    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F6E3F' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+    cell.border = {
+      top:    { style: 'thin', color: { argb: 'FF14532D' } },
+      bottom: { style: 'thin', color: { argb: 'FF14532D' } },
+      left:   { style: 'thin', color: { argb: 'FF14532D' } },
+      right:  { style: 'thin', color: { argb: 'FF14532D' } },
+    }
+  })
+
+  // ── Filas de datos con bandas
+  rows.forEach((r, idx) => {
+    const rowValues = cols.map(c => r[c.key] ?? null)
+    const row = ws.addRow(rowValues)
+    const bandFill = idx % 2 === 0
+      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }
+      : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6F0' } }
+    row.eachCell(cell => {
+      cell.fill = bandFill
+      cell.border = {
+        bottom: { style: 'hair', color: { argb: 'FFD1D5DB' } },
+        right:  { style: 'hair', color: { argb: 'FFE5E7EB' } },
+      }
+    })
+    // Alinear según tipo
+    cols.forEach((c, i) => {
+      const cell = row.getCell(i + 1)
+      if (c.type === 'date' || c.type === 'time') {
+        cell.alignment = { horizontal: 'center' }
+      } else if (['money', 'int', 'qty'].includes(c.type)) {
+        cell.alignment = { horizontal: 'right' }
+      } else {
+        cell.alignment = { horizontal: 'left' }
+      }
+    })
+  })
+
+  // ── Fila de totales
+  if (totalsRow) {
+    const rowValues = cols.map(c => (c.key in totalsRow ? totalsRow[c.key] : null))
+    const row = ws.addRow(rowValues)
+    row.height = 20
+    row.eachCell((cell, colNumber) => {
+      const c = cols[colNumber - 1]
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF14532D' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F0DD' } }
+      cell.border = {
+        top:    { style: 'medium', color: { argb: 'FF1F6E3F' } },
+        bottom: { style: 'medium', color: { argb: 'FF1F6E3F' } },
+      }
+      if (c.type === 'date' || c.type === 'time') cell.alignment = { horizontal: 'center' }
+      else if (['money', 'int', 'qty'].includes(c.type)) cell.alignment = { horizontal: 'right' }
+      else cell.alignment = { horizontal: 'left' }
+    })
+  }
+
+  // ── Congelar primera fila + autofiltro
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+  const lastDataRow = rows.length + 1 // header en fila 1
+  ws.autoFilter = {
+    from: { row: 1, column: 1 },
+    to:   { row: lastDataRow, column: cols.length },
+  }
+
+  // ── Configuración de impresión A4
+  ws.pageSetup = {
+    paperSize: 9, // A4
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,    // siempre cabe a 1 página de ancho
+    fitToHeight: 0,   // tantas hojas como hagan falta de alto
+    horizontalCentered: true,
+    margins: {
+      left: 0.4, right: 0.4, top: 0.6, bottom: 0.6,
+      header: 0.3, footer: 0.3,
+    },
+  }
+  // Repetir cabecera en cada página impresa
+  ws.pageSetup.printTitlesRow = '1:1'
+  ws.headerFooter = {
+    oddHeader: `&L&B${titulo}&C&"Calibri,Bold"&12${periodoLabel.value}&R&D`,
+    oddFooter: '&LSys-Molly&CPágina &P de &N&R&T',
+  }
+}
+
+async function generarLibroVentas() {
+  const ventas = [...ventasStore.ventas].sort((a, b) => {
+    const fa = normalizarFecha(a.fecha)?.getTime() || 0
+    const fb = normalizarFecha(b.fecha)?.getTime() || 0
+    return fa - fb
+  })
+
+  const tickets = []
+  const detalle = []
+  let totSubtotal = 0, totRecargo = 0, totTotal = 0, totItems = 0
+
+  for (const v of ventas) {
+    const fecha = normalizarFecha(v.fecha)
+    if (!fecha) continue
+    const items = Array.isArray(v.items) ? v.items : []
+    const subtotal = Number(v.subtotal ?? 0)
+    const recargo = Number(v.recargo ?? 0)
+    const total = Number(v.total ?? 0)
+    const metodo = v.metodo_pago || ''
+    const estado = v.estado || 'activa'
+    const soloFecha = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate())
+
+    tickets.push({
+      fecha: soloFecha,
+      hora: fecha,
+      items: items.length,
+      subtotal, recargo, total,
+      metodo, estado,
+    })
+
+    if (estado !== 'anulada') {
+      totSubtotal += subtotal
+      totRecargo += recargo
+      totTotal += total
+      totItems += items.length
+    }
+
+    for (const item of items) {
+      const qty = Number(item.qty ?? 1)
+      const precio = Number(item.precio_unitario ?? item.precio ?? 0)
+      const sub = Number(item.subtotal ?? precio * qty)
+      detalle.push({
+        fecha: soloFecha,
+        hora: fecha,
+        producto: item.nombre || '',
+        cantidad: qty,
+        precio,
+        subtotal: sub,
+        metodo, estado,
+      })
+    }
+  }
+
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'Sys-Molly'
+  wb.created = new Date()
+
+  const colsTickets = [
+    { key: 'fecha',    label: 'Fecha',       type: 'date'  },
+    { key: 'hora',     label: 'Hora',        type: 'time'  },
+    { key: 'items',    label: 'Ítems',       type: 'int'   },
+    { key: 'subtotal', label: 'Subtotal',    type: 'money' },
+    { key: 'recargo',  label: 'Recargo',     type: 'money' },
+    { key: 'total',    label: 'Total',       type: 'money' },
+    { key: 'metodo',   label: 'Método pago', type: 'text'  },
+    { key: 'estado',   label: 'Estado',      type: 'text'  },
+  ]
+  configurarHoja(wb.addWorksheet('Tickets'), colsTickets, tickets, {
+    fecha: 'TOTAL',
+    items: totItems,
+    subtotal: totSubtotal,
+    recargo: totRecargo,
+    total: totTotal,
+  }, { titulo: 'Ventas — Tickets' })
+
+  if (detalle.length) {
+    const totDetCant = detalle.reduce((s, d) => s + (d.estado === 'anulada' ? 0 : d.cantidad), 0)
+    const totDetSub = detalle.reduce((s, d) => s + (d.estado === 'anulada' ? 0 : d.subtotal), 0)
+    const colsDetalle = [
+      { key: 'fecha',    label: 'Fecha',        type: 'date'  },
+      { key: 'hora',     label: 'Hora',         type: 'time'  },
+      { key: 'producto', label: 'Producto',     type: 'text'  },
+      { key: 'cantidad', label: 'Cantidad',     type: 'qty'   },
+      { key: 'precio',   label: 'Precio unit.', type: 'money' },
+      { key: 'subtotal', label: 'Subtotal',     type: 'money' },
+      { key: 'metodo',   label: 'Método pago',  type: 'text'  },
+      { key: 'estado',   label: 'Estado',       type: 'text'  },
+    ]
+    configurarHoja(wb.addWorksheet('Detalle por item'), colsDetalle, detalle, {
+      fecha: 'TOTAL',
+      cantidad: totDetCant,
+      subtotal: totDetSub,
+    }, { titulo: 'Ventas — Detalle por item' })
+  }
+
+  // Por método
+  const porMetodo = {}
+  for (const t of tickets) {
+    if (t.estado === 'anulada') continue
+    const k = t.metodo || 'sin método'
+    if (!porMetodo[k]) porMetodo[k] = { metodo: k, tickets: 0, total: 0 }
+    porMetodo[k].tickets += 1
+    porMetodo[k].total += t.total
+  }
+  const filasMetodo = Object.values(porMetodo).sort((a, b) => b.total - a.total)
+  if (filasMetodo.length) {
+    configurarHoja(wb.addWorksheet('Por método de pago'), [
+      { key: 'metodo',  label: 'Método pago', type: 'text'  },
+      { key: 'tickets', label: 'Tickets',     type: 'int'   },
+      { key: 'total',   label: 'Total',       type: 'money' },
+    ], filasMetodo, {
+      metodo: 'TOTAL',
+      tickets: filasMetodo.reduce((s, m) => s + m.tickets, 0),
+      total: filasMetodo.reduce((s, m) => s + m.total, 0),
+    }, { titulo: 'Ventas — Por método de pago' })
+  }
+
+  const buffer = await wb.xlsx.writeBuffer()
+  descargarBlob(buffer, `Ventas_${nombreMesArchivo()}.xlsx`)
+}
+
+async function generarLibroCompras() {
+  const compras = [...comprasStore.compras].sort((a, b) => {
+    const fa = normalizarFecha(a.fecha)?.getTime() || 0
+    const fb = normalizarFecha(b.fecha)?.getTime() || 0
+    return fa - fb
+  })
+
+  const filas = []
+  let totCant = 0, totMonto = 0
+
+  for (const c of compras) {
+    const fecha = normalizarFecha(c.fecha)
+    if (!fecha) continue
+    const cantidad = Number(c.cantidad ?? 0)
+    const total = Number(c.total ?? 0)
+    const estado = c.estado || 'activa'
+    filas.push({
+      fecha: new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()),
+      producto: c.nombre || '',
+      proveedor: c.proveedor || '',
+      cantidad,
+      presentacion: c.presentacion || '',
+      precioCompra: Number(c.precio_compra ?? 0),
+      precioVenta: Number(c.precio_venta ?? 0),
+      total,
+      estado,
+    })
+    if (estado !== 'anulada') {
+      totCant += cantidad
+      totMonto += total
+    }
+  }
+
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'Sys-Molly'
+  wb.created = new Date()
+
+  configurarHoja(wb.addWorksheet('Compras'), [
+    { key: 'fecha',        label: 'Fecha',         type: 'date'  },
+    { key: 'producto',     label: 'Producto',      type: 'text'  },
+    { key: 'proveedor',    label: 'Proveedor',     type: 'text'  },
+    { key: 'cantidad',     label: 'Cantidad',      type: 'qty'   },
+    { key: 'presentacion', label: 'Presentación',  type: 'text'  },
+    { key: 'precioCompra', label: 'Precio compra', type: 'money' },
+    { key: 'precioVenta',  label: 'Precio venta',  type: 'money' },
+    { key: 'total',        label: 'Total',         type: 'money' },
+    { key: 'estado',       label: 'Estado',        type: 'text'  },
+  ], filas, {
+    fecha: 'TOTAL',
+    cantidad: totCant,
+    total: totMonto,
+  }, { titulo: 'Compras' })
+
+  const totalesPorProveedor = {}
+  for (const c of compras) {
+    if ((c.estado || 'activa') === 'anulada') continue
+    const p = c.proveedor || 'Sin proveedor'
+    if (!totalesPorProveedor[p]) totalesPorProveedor[p] = { proveedor: p, operaciones: 0, total: 0 }
+    totalesPorProveedor[p].operaciones += 1
+    totalesPorProveedor[p].total += Number(c.total ?? 0)
+  }
+  const resumenProv = Object.values(totalesPorProveedor).sort((a, b) => b.total - a.total)
+  if (resumenProv.length) {
+    configurarHoja(wb.addWorksheet('Por proveedor'), [
+      { key: 'proveedor',   label: 'Proveedor',   type: 'text'  },
+      { key: 'operaciones', label: 'Operaciones', type: 'int'   },
+      { key: 'total',       label: 'Total',       type: 'money' },
+    ], resumenProv, {
+      proveedor: 'TOTAL',
+      operaciones: resumenProv.reduce((s, r) => s + r.operaciones, 0),
+      total: resumenProv.reduce((s, r) => s + r.total, 0),
+    }, { titulo: 'Compras — Por proveedor' })
+  }
+
+  const buffer = await wb.xlsx.writeBuffer()
+  descargarBlob(buffer, `Compras_${nombreMesArchivo()}.xlsx`)
+}
+
+async function exportarExcel() {
+  if (exportando.value) return
+  exportando.value = true
+  try {
+    if (modo.value === 'compras') {
+      if (!authStore.isAdmin) return
+      await generarLibroCompras()
+    } else {
+      await generarLibroVentas()
+    }
+  } catch (err) {
+    console.error('[Graficos] Error exportando Excel:', err)
+    alert('No se pudo generar el archivo Excel. Revisá la consola.')
+  } finally {
+    exportando.value = false
+  }
+}
+
+const puedeExportar = computed(() => {
+  if (loading.value) return false
+  if (modo.value === 'compras') return authStore.isAdmin && comprasStore.compras.length > 0
+  return ventasStore.ventas.length > 0
+})
+
+const labelExportar = computed(() => (modo.value === 'compras' ? 'Compras' : 'Ventas'))
 </script>
 
 <template>
@@ -456,33 +845,56 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Derecha: Paginador de mes (Visible Desktop) -->
-              <div class="hidden md:flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-100 px-2 py-1.5 min-w-[200px] flex-shrink-0 mt-1 lg:mt-0">
-                <button
-                  @click="anteriorMes"
-                  v-tippy="'Mes anterior'"
-                  class="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
-                  aria-label="Mes anterior"
-                >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6" />
-                  </svg>
-                </button>
+              <!-- Derecha: Paginador + Exportar (Visible Desktop) -->
+              <div class="hidden md:flex flex-col gap-1.5 flex-shrink-0 mt-1 lg:mt-0">
+                <div class="flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-100 px-2 py-1.5 min-w-[200px]">
+                  <button
+                    @click="anteriorMes"
+                    v-tippy="'Mes anterior'"
+                    class="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
+                    aria-label="Mes anterior"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6" />
+                    </svg>
+                  </button>
 
-                <div class="text-center min-w-0 flex-1 px-2">
-                  <p class="text-sm md:text-base font-bold text-gray-900 capitalize truncate">{{ periodoLabel }}</p>
+                  <div class="text-center min-w-0 flex-1 px-2">
+                    <p class="text-sm md:text-base font-bold text-gray-900 capitalize truncate">{{ periodoLabel }}</p>
+                  </div>
+
+                  <button
+                    @click="siguienteMes"
+                    :disabled="esMesActual"
+                    v-tippy="'Mes siguiente'"
+                    class="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-30"
+                    aria-label="Mes siguiente"
+                  >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
+                    </svg>
+                  </button>
                 </div>
 
+                <!-- Botón exportar Excel (Desktop, debajo del selector) -->
                 <button
-                  @click="siguienteMes"
-                  :disabled="esMesActual"
-                  v-tippy="'Mes siguiente'"
-                  class="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-30"
-                  aria-label="Mes siguiente"
+                  v-show="tab === 'general'"
+                  @click="exportarExcel"
+                  :disabled="!puedeExportar || exportando"
+                  v-tippy="`Exportar ${labelExportar.toLowerCase()} de ${periodoLabel} a Excel`"
+                  :aria-label="`Exportar ${labelExportar} a Excel`"
+                  class="inline-flex items-center justify-center gap-2 w-full px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                 >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
+                  <svg v-if="!exportando" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 3v6h6"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="m9.5 13 5 5m0-5-5 5"/>
                   </svg>
+                  <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                  <span>{{ exportando ? 'Generando…' : `Exportar ${labelExportar}` }}</span>
                 </button>
               </div>
             </div>
@@ -500,6 +912,21 @@ onUnmounted(() => {
             </div>
             <button @click="siguienteMes" :disabled="esMesActual" class="w-9 h-9 flex items-center justify-center rounded-lg bg-gray-50 border border-gray-200 text-gray-700 active:bg-gray-200 transition-colors disabled:opacity-30" aria-label="Mes siguiente">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" /></svg>
+            </button>
+            <button
+              v-show="tab === 'general'"
+              @click="exportarExcel"
+              :disabled="!puedeExportar || exportando"
+              :aria-label="`Exportar ${labelExportar} a Excel`"
+              class="w-9 h-9 flex items-center justify-center rounded-lg bg-emerald-600 active:bg-emerald-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex-shrink-0"
+            >
+              <svg v-if="!exportando" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+              </svg>
+              <svg v-else class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
             </button>
           </div>
         </div>
