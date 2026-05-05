@@ -51,21 +51,13 @@ const cantidadCalculada = computed(() => {
       : valor
   }
 
-  // Modo 'importe' (usuario ingresa $)
+  // Modo 'importe' (usuario ingresa $): para granel Y por unidad
+  // truncar a 3 decimales para garantizar qty * precio <= importe (nunca redondear hacia arriba)
   const precio = Number(productoSeleccionado.value.precio_venta ?? 0)
   if (precio <= 0) return 0
-
-  if (esGranel(productoSeleccionado.value)) {
-    // Para granel: calcular kg = importe / precio y TRUNCAR a 3 decimales
-    const rawQty = valor / precio
-    const trunc = Math.floor(rawQty * 1000) / 1000
-    return parseFloat(trunc.toFixed(3))
-  }
-
-  // Para productos por unidad: convertir a unidades ENTERAS sin redondear hacia arriba
-  // (asegura que qty * precio <= importe)
-  const unidades = Math.floor(valor / precio)
-  return unidades
+  const rawQty = valor / precio
+  const trunc = Math.floor(rawQty * 1000) / 1000
+  return parseFloat(trunc.toFixed(3))
 })
 
 // Todos los productos abren el modal — granel con 'kg', el resto con 'unid'
