@@ -94,16 +94,19 @@ async function confirmarVenta() {
     <!-- ── Botón flotante ─────────────────────────────────────────────────── -->
     <Transition name="bounce">
       <button
-        v-if="!carritoVacio && !drawerAbierto"
+        v-if="!drawerAbierto"
         @click="abrirDrawer"
-        class="fixed bottom-6 right-5 z-[60] flex items-center gap-2 bg-green-500 text-white font-bold rounded-2xl shadow-xl px-5 py-3.5 active:bg-green-600 transition-colors"
+        :class="[
+          'fixed bottom-6 right-5 z-[60] flex items-center gap-2 font-bold rounded-2xl shadow-xl px-5 py-3.5 transition-colors',
+          carritoVacio ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50' : 'bg-green-500 text-white active:bg-green-600'
+        ]"
         aria-label="Ver carrito"
       >
         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
         </svg>
         <span>Ver carrito</span>
-        <span class="bg-white text-green-600 text-xs font-black rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1 leading-none">
+        <span :class="['text-xs font-black rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1 leading-none', carritoVacio ? 'bg-gray-100 text-gray-600' : 'bg-white text-green-600']">
           {{ ventasStore.carrito.length }}
         </span>
       </button>
@@ -141,29 +144,34 @@ async function confirmarVenta() {
 
         <!-- Lista de ítems (scrolleable) -->
         <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-2">
-          <div
-            v-for="item in ventasStore.carrito"
-            :key="item.id"
-            class="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5"
-          >
-            <button
-              @click="ventasStore.quitarDelCarrito(item.id)"
-              class="w-7 h-7 rounded-lg bg-red-50 text-red-500 text-base font-bold flex items-center justify-center flex-shrink-0 active:bg-red-100 transition-colors"
-              aria-label="Quitar ítem"
-            >−</button>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold text-gray-800 truncate">{{ item.nombre }}</p>
-              <p class="text-xs text-gray-400">
-                {{ item.venta_granel
-                  ? `${item.qty.toFixed(3)} kg`
-                  : item.es_fraccionado
-                    ? `${Number(item.qty).toFixed(3)} unid.`
-                    : `× ${item.qty} unid.` }}
-              </p>
+          <div v-if="ventasStore.carrito.length === 0" class="py-12 text-center text-sm text-gray-400">
+            Carrito vacío — tocá un producto para agregarlo
+          </div>
+          <div v-else>
+            <div
+              v-for="item in ventasStore.carrito"
+              :key="item.id"
+              class="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5"
+            >
+              <button
+                @click="ventasStore.quitarDelCarrito(item.id)"
+                class="w-7 h-7 rounded-lg bg-red-50 text-red-500 text-base font-bold flex items-center justify-center flex-shrink-0 active:bg-red-100 transition-colors"
+                aria-label="Quitar ítem"
+              >−</button>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800 truncate">{{ item.nombre }}</p>
+                <p class="text-xs text-gray-400">
+                  {{ item.venta_granel
+                    ? `${item.qty.toFixed(3)} kg`
+                    : item.es_fraccionado
+                      ? `${Number(item.qty).toFixed(3)} unid.`
+                      : `× ${item.qty} unid.` }}
+                </p>
+              </div>
+              <span class="text-sm font-bold text-gray-800 flex-shrink-0">
+                ${{ ((item.precio ?? 0) * item.qty).toLocaleString('es-AR') }}
+              </span>
             </div>
-            <span class="text-sm font-bold text-gray-800 flex-shrink-0">
-              ${{ ((item.precio ?? 0) * item.qty).toLocaleString('es-AR') }}
-            </span>
           </div>
         </div>
 
