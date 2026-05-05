@@ -52,12 +52,12 @@ const cantidadCalculada = computed(() => {
   }
 
   // Modo 'importe' (usuario ingresa $): para granel Y por unidad
-  // truncar a 3 decimales para garantizar qty * precio <= importe (nunca redondear hacia arriba)
+  // truncar a 5 decimales para garantizar qty * precio <= importe (nunca redondear hacia arriba)
   const precio = Number(productoSeleccionado.value.precio_venta ?? 0)
   if (precio <= 0) return 0
   const rawQty = valor / precio
-  const trunc = Math.floor(rawQty * 1000) / 1000
-  return parseFloat(trunc.toFixed(3))
+  const trunc = Math.floor(rawQty * 100000) / 100000
+  return parseFloat(trunc.toFixed(5))
 })
 
 // Todos los productos abren el modal — granel con 'kg', el resto con 'unid'
@@ -211,7 +211,7 @@ function cancelarModal() {
             }}</span>
           </p>
           <p v-if="modoIngreso === 'importe' && esGranel(productoSeleccionado) && cantidadCalculada > 0" class="text-xs text-gray-500 mt-0.5">
-            = {{ cantidadCalculada.toFixed(3) }} kg
+            = {{ parseFloat(cantidadCalculada.toFixed(5)) }} kg
           </p>
           <p v-if="previewTotal > 0" class="text-sm text-green-600 font-semibold mt-0.5">
             = ${{ previewTotal.toLocaleString('es-AR') }}
@@ -243,7 +243,7 @@ function cancelarModal() {
           :disabled="!cantidadCalculada || cantidadCalculada <= 0"
           class="w-full py-3.5 bg-green-500 text-white font-bold rounded-xl text-sm disabled:opacity-40 active:bg-green-600 transition-colors"
         >
-          Agregar {{ cantidadCalculada > 0 ? `${cantidadCalculada.toFixed(3)} ${modoBase === 'kg' ? 'kg' : 'unid.'}` : '' }} al carrito
+          Agregar {{ cantidadCalculada > 0 ? `${parseFloat(cantidadCalculada.toFixed(5))} ${modoBase === 'kg' ? 'kg' : 'unid.'}` : '' }} al carrito
         </button>
 
       </div>

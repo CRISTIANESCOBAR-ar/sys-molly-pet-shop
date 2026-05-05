@@ -54,7 +54,7 @@ export const useVentasStore = defineStore('ventas', () => {
     const granel = esGranel(producto)
     const esFraccionado = !granel && qty % 1 !== 0
     if (existe) {
-      const nuevaQty = parseFloat((existe.qty + qty).toFixed(3))
+      const nuevaQty = parseFloat((existe.qty + qty).toFixed(5))
       existe.qty = nuevaQty
       if (!granel && nuevaQty % 1 !== 0) existe.es_fraccionado = true
     } else {
@@ -62,7 +62,7 @@ export const useVentasStore = defineStore('ventas', () => {
         id:             producto.id,
         nombre:         producto.nombre,
         precio:         producto.precio_venta,
-        qty:            parseFloat(qty.toFixed ? qty.toFixed(3) : qty),
+        qty:            parseFloat(qty.toFixed ? qty.toFixed(5) : qty),
         venta_granel:   granel,
         es_fraccionado: esFraccionado,
       })

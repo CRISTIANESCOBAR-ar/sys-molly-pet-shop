@@ -162,9 +162,9 @@ async function confirmarVenta() {
                 <p class="text-sm font-semibold text-gray-800 truncate">{{ item.nombre }}</p>
                 <p class="text-xs text-gray-400">
                   {{ item.venta_granel
-                    ? `${item.qty.toFixed(3)} kg`
+                    ? `${parseFloat(item.qty.toFixed(5))} kg`
                     : item.es_fraccionado
-                      ? `${Number(item.qty).toFixed(3)} unid.`
+                      ? `${parseFloat(Number(item.qty).toFixed(5))} unid.`
                       : `× ${item.qty} unid.` }}
                 </p>
               </div>
