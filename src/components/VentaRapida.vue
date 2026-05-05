@@ -2,20 +2,12 @@
 import { ref, computed } from 'vue'
 import { useVentasStore }      from '@/stores/useVentasStore'
 import { useProductosStore }   from '@/stores/useProductosStore'
-import { useAuthStore }        from '@/stores/useAuthStore'
-import { useSyncQueueStore, esErrorRecuperable } from '@/stores/useSyncQueueStore'
-import { METODOS_PAGO }        from '@/firebase/constants'
+import CarritoDrawer           from '@/components/CarritoDrawer.vue'
 
 const ventasStore    = useVentasStore()
 const productosStore = useProductosStore()
-const authStore      = useAuthStore()
-const syncQueueStore = useSyncQueueStore()
 
-const busqueda      = ref('')
-const confirmando   = ref(false)
-const exito         = ref(false)
-const errorMsg      = ref('')
-const enCola        = ref(false)
+const busqueda = ref('')
 
 // ─── Filtro de productos ────────────────────────────────────────────────────
 const productosFiltrados = computed(() => {
@@ -25,10 +17,6 @@ const productosFiltrados = computed(() => {
     p.nombre.toLowerCase().includes(q),
   )
 })
-
-// ─── Validaciones reactivas (sin librerías) ─────────────────────────────────
-const carritoVacio    = computed(() => ventasStore.carrito.length === 0)
-const puedeConfirmar  = computed(() => !carritoVacio.value && !confirmando.value)
 
 // ─── Modal de cantidad (granel) ─────────────────────────────────────────────
 const productoSeleccionado = ref(null)
@@ -108,51 +96,7 @@ function cancelarModal() {
   modoIngreso.value = 'kg' // se sobreescribe al abrir el próximo modal
 }
 
-// ─── Confirmar venta ────────────────────────────────────────────────────────
-function mensajeErrorAmigable(e) {
-  const msg = (e?.message || '').toLowerCase()
-  const code = (e?.code || '').toLowerCase()
-  if (msg.includes('quota') || msg.includes('resource') || code.includes('resource-exhausted')) {
-    return 'Límite diario de operaciones alcanzado. Intentá en unos minutos o contactá al administrador.'
-  }
-  if (msg.includes('stock insuficiente')) return e.message
-  if (msg.includes('carrito')) return 'El carrito está vacío'
-  if (msg.includes('offline') || code.includes('unavailable')) {
-    return 'Sin conexión. Verificá internet e intentá de nuevo.'
-  }
-  return 'Error al registrar la venta. Intentá de nuevo.'
-}
-
-async function confirmarVenta() {
-  if (!puedeConfirmar.value) return
-  confirmando.value = true
-  errorMsg.value    = ''
-  enCola.value      = false
-  try {
-    await ventasStore.registrarVenta()
-    exito.value = true
-    setTimeout(() => { exito.value = false }, 2500)
-  } catch (e) {
-    if (esErrorRecuperable(e)) {
-      // Guardar en cola local para sincronizar cuando vuelva el acceso
-      syncQueueStore.addVenta({
-        items:          ventasStore.carrito.map(i => ({ ...i })),
-        metodo_pago:    ventasStore.metodoPago,
-        subtotal:       ventasStore.subtotal,
-        recargo_metodo: ventasStore.recargoMetodo,
-        total:          ventasStore.total,
-        id_usuario:     authStore.user?.uid || null,
-      })
-      ventasStore.limpiarCarrito()
-      enCola.value = true
-      setTimeout(() => { enCola.value = false }, 6000)
-    } else {
-      errorMsg.value = mensajeErrorAmigable(e)
-    }
-  } finally {
-    confirmando.value = false
-  }
-}
+// ─── Confirmar venta (delegado a CarritoDrawer) ─────────────────────────────
 </script>
 
 <template>
@@ -197,110 +141,8 @@ async function confirmarVenta() {
       </button>
     </div>
 
-    <!-- ── Carrito ───────────────────────────────────────────────────────── -->
-    <div
-      v-if="!carritoVacio"
-      class="flex-shrink-0 border-t border-gray-100 bg-gray-50 px-4 pt-3 pb-4 space-y-3 overflow-y-auto max-h-[55vh] md:max-h-[50vh]"
-    >
-      <!-- Ítems -->
-      <div class="space-y-1.5 max-h-36 overflow-y-auto">
-        <div
-          v-for="item in ventasStore.carrito"
-          :key="item.id"
-          class="flex items-center gap-2"
-        >
-          <button
-            @click="ventasStore.quitarDelCarrito(item.id)"
-            class="w-7 h-7 rounded-lg bg-red-50 text-red-500 text-base font-bold flex items-center justify-center flex-shrink-0"
-          >
-            −
-          </button>
-          <span class="flex-1 text-sm text-gray-700 truncate">{{ item.nombre }}</span>
-          <span class="text-xs text-gray-400 flex-shrink-0">
-            {{ item.venta_granel
-              ? `×${item.qty.toFixed(3)} kg`
-              : item.es_fraccionado
-                ? `×${Number(item.qty).toFixed(3)} unid.`
-                : `×${item.qty}` }}
-          </span>
-          <span class="text-sm font-semibold text-gray-800 flex-shrink-0 w-20 text-right">
-            ${{ ((item.precio ?? 0) * item.qty).toLocaleString('es-AR') }}
-          </span>
-        </div>
-      </div>
-
-      <!-- Método de pago -->
-      <div>
-        <p class="text-xs font-medium text-gray-500 mb-1.5">Método de pago</p>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="m in METODOS_PAGO"
-            :key="m.value"
-            @click="ventasStore.metodoPago = m.value"
-            :class="[
-              'py-2.5 rounded-xl text-xs font-semibold border transition-colors',
-              ventasStore.metodoPago === m.value
-                ? 'bg-green-500 text-white border-green-500'
-                : 'bg-white text-gray-600 border-gray-200',
-            ]"
-          >
-            {{ m.label }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Totales -->
-      <div class="space-y-1 border-t border-gray-200 pt-2">
-        <div class="flex justify-between text-sm text-gray-500">
-          <span>Subtotal</span>
-          <span>${{ ventasStore.subtotal.toLocaleString('es-AR') }}</span>
-        </div>
-        <div v-if="ventasStore.recargoMetodo > 0" class="flex justify-between text-sm text-orange-500 font-medium">
-          <span>Recargo crédito 10%</span>
-          <span>+${{ ventasStore.recargoMetodo.toLocaleString('es-AR') }}</span>
-        </div>
-        <div class="flex justify-between text-base font-bold text-gray-900">
-          <span>Total</span>
-          <span>${{ ventasStore.total.toLocaleString('es-AR') }}</span>
-        </div>
-      </div>
-
-      <!-- Error -->
-      <p v-if="errorMsg" class="text-xs text-red-500">{{ errorMsg }}</p>
-
-      <!-- Flash de éxito -->
-      <div
-        v-if="exito"
-        class="text-center text-sm font-semibold text-green-600 bg-green-50 rounded-xl py-2"
-      >
-        ✓ Venta registrada
-      </div>
-
-      <!-- Guardado en cola offline -->
-      <div
-        v-if="enCola"
-        class="text-center text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-3"
-      >
-        ⏳ Sin acceso — venta guardada para sincronizar
-      </div>
-
-      <!-- Botón confirmar -->
-      <button
-        v-else-if="!enCola"
-        @click="confirmarVenta"
-        :disabled="!puedeConfirmar"
-        class="w-full py-3.5 bg-green-500 text-white font-bold rounded-xl text-sm disabled:opacity-50 active:bg-green-600 transition-colors"
-      >
-        {{ confirmando ? 'Registrando...' : `Confirmar · $${ventasStore.total.toLocaleString('es-AR')}` }}
-      </button>
-    </div>
-
-    <!-- Placeholder carrito vacío -->
-    <div v-else class="px-4 pb-4">
-      <div class="text-center text-sm text-gray-300 py-4 border-2 border-dashed border-gray-100 rounded-xl">
-        Tocá un producto para agregarlo
-      </div>
-    </div>
+    <!-- CarritoDrawer maneja el carrito, totales y confirmación -->
+    <CarritoDrawer />
 
   </div>
 
