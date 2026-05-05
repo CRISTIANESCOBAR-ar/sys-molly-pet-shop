@@ -169,7 +169,7 @@ async function confirmarVenta() {
                 </p>
               </div>
               <span class="text-sm font-bold text-gray-800 flex-shrink-0">
-                ${{ ((item.precio ?? 0) * item.qty).toLocaleString('es-AR') }}
+                ${{ Math.round((item.precio ?? 0) * item.qty).toLocaleString('es-AR') }}
               </span>
             </div>
           </div>

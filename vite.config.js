@@ -35,13 +35,11 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
+            // Firestore usa streams de larga duración (Listen/channel).
+            // Workbox NO debe cachear esas respuestas — el SDK de Firebase
+            // ya maneja offline via IndexedDB. NetworkOnly evita interferir.
             urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'firestore-cache',
-              networkTimeoutSeconds: 10,
-              cacheableResponse: { statuses: [0, 200] },
-            },
+            handler: 'NetworkOnly',
           },
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
