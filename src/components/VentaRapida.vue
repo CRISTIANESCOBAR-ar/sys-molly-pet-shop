@@ -43,11 +43,29 @@ const cantidadCalculada = computed(() => {
   const valor = parseFloat(inputCantidad.value) || 0
   if (!productoSeleccionado.value || valor <= 0) return 0
 
-  if (modoIngreso.value === 'kg' || modoIngreso.value === 'unid') return valor
+  // Si el usuario ingresa cantidad directa (kg o unid), respetar lo ingresado
+  if (modoIngreso.value === 'kg' || modoIngreso.value === 'unid') {
+    // Para kg/unid ingresados directamente, no forzamos redondeos aquí
+    return modoIngreso.value === 'kg'
+      ? parseFloat((Math.floor(valor * 1000) / 1000).toFixed(3)) // truncar kg a 3 decimales
+      : valor
+  }
 
+  // Modo 'importe' (usuario ingresa $)
   const precio = Number(productoSeleccionado.value.precio_venta ?? 0)
   if (precio <= 0) return 0
-  return parseFloat((valor / precio).toFixed(3))
+
+  if (esGranel(productoSeleccionado.value)) {
+    // Para granel: calcular kg = importe / precio y TRUNCAR a 3 decimales
+    const rawQty = valor / precio
+    const trunc = Math.floor(rawQty * 1000) / 1000
+    return parseFloat(trunc.toFixed(3))
+  }
+
+  // Para productos por unidad: convertir a unidades ENTERAS sin redondear hacia arriba
+  // (asegura que qty * precio <= importe)
+  const unidades = Math.floor(valor / precio)
+  return unidades
 })
 
 // Todos los productos abren el modal — granel con 'kg', el resto con 'unid'
