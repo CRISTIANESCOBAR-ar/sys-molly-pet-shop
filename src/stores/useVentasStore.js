@@ -34,7 +34,7 @@ export const useVentasStore = defineStore('ventas', () => {
 
   // ─── Computed ──────────────────────────────────────────────────────────────
   const subtotal = computed(() =>
-    carrito.value.reduce((sum, item) => sum + (item.precio ?? 0) * (item.qty ?? 0), 0),
+    carrito.value.reduce((sum, item) => sum + Math.round((item.precio ?? 0) * (item.qty ?? 0)), 0),
   )
 
   const recargoMetodo = computed(() => {
