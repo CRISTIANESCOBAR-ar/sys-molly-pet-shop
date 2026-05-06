@@ -286,8 +286,9 @@ async function cargarMasVentas() {
               class="flex items-baseline justify-between gap-2"
             >
               <span class="truncate font-medium">{{ item.nombre }}</span>
-              <span class="flex-shrink-0 text-gray-400">
-                {{ item.venta_granel ? `${Number(item.qty).toFixed(3)} kg` : `×${item.qty} unid.` }}
+              <span class="flex-shrink-0 text-gray-400 text-right">
+                <span>{{ item.venta_granel ? `${Number(item.qty).toFixed(3)} kg` : `×${item.qty} unid.` }}</span>
+                <span class="ml-2 text-gray-500">${{ Math.round((item.precio ?? 0) * (item.qty ?? 0)).toLocaleString('es-AR') }}</span>
               </span>
             </li>
           </ul>
