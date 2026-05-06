@@ -100,22 +100,22 @@ export const useVentasStore = defineStore('ventas', () => {
     }))
 
     await runTransaction(db, async (tx) => {
-      // ── FASE 1: todas las lecturas primero (regla de Firestore transactions) ──
-      const snapshots = []
-      for (const item of itemsVenta) {
-        const qty = Number(item.qty ?? 0)
-        if (!item.id || qty <= 0) throw new Error('Ítem de venta inválido')
-        const productoRef = doc(db, 'productos', item.id)
-        const productoSnap = await tx.get(productoRef)
-        if (!productoSnap.exists()) throw new Error(`Producto no encontrado: ${item.nombre}`)
-        const stockActual = Number(productoSnap.data()?.stock ?? 0)
-        if (stockActual < qty) {
-          throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${stockActual}`)
-        }
-        snapshots.push({ ref: productoRef, stockActual, qty })
-      }
+      // ── FASE 1: lecturas en paralelo ─────────────────────────────────────
+      const productosRefs = itemsVenta.map(item => {
+        if (!item.id || Number(item.qty ?? 0) <= 0) throw new Error('Ítem de venta inválido')
+        return doc(db, 'productos', item.id)
+      })
+      const productosSnaps = await Promise.all(productosRefs.map(ref => tx.get(ref)))
 
-      // ── FASE 2: todas las escrituras después ──────────────────────────────
+      const snapshots = productosSnaps.map((snap, i) => {
+        if (!snap.exists()) throw new Error(`Producto no encontrado: ${itemsVenta[i].nombre}`)
+        const stockActual = Number(snap.data()?.stock ?? 0)
+        const qty = Number(itemsVenta[i].qty ?? 0)
+        if (stockActual < qty) throw new Error(`Stock insuficiente para ${itemsVenta[i].nombre}. Disponible: ${stockActual}`)
+        return { ref: productosRefs[i], stockActual, qty }
+      })
+
+      // ── FASE 2: escrituras ───────────────────────────────────────────────
       for (const { ref, stockActual, qty } of snapshots) {
         tx.update(ref, {
           stock: parseFloat((stockActual - qty).toFixed(3)),
@@ -138,6 +138,21 @@ export const useVentasStore = defineStore('ventas', () => {
     })
     metrics.trackReadEstimate('ventas.registrarVenta.tx', itemsVenta.length)
     metrics.trackWriteEstimate('ventas.registrarVenta.tx', itemsVenta.length + 1)
+
+    // Agregar la nueva venta al historial local inmediatamente (sin recargar Firestore)
+    const ahora = new Date()
+    ventas.value.unshift({
+      id: `local-${Date.now()}`,
+      fecha: { toDate: () => ahora },
+      items: itemsVenta,
+      subtotal: subtotal.value,
+      recargo_metodo: recargoMetodo.value,
+      total: total.value,
+      metodo_pago: metodoPago.value,
+      id_usuario: authStore.user?.uid,
+      usuario_email: authStore.user?.email || null,
+      estado: 'activa',
+    })
 
     limpiarCarrito()
   }
@@ -227,18 +242,24 @@ export const useVentasStore = defineStore('ventas', () => {
     const { items, metodo_pago, subtotal: sub, recargo_metodo, total: tot } = payload
 
     await runTransaction(db, async (tx) => {
-      for (const item of items) {
-        const qty = Number(item.qty ?? 0)
-        if (!item.id || qty <= 0) throw new Error('Ítem de venta inválido')
+      // ── FASE 1: lecturas en paralelo ─────────────────────────────────────
+      const productosRefs = items.map(item => {
+        if (!item.id || Number(item.qty ?? 0) <= 0) throw new Error('Ítem de venta inválido')
+        return doc(db, 'productos', item.id)
+      })
+      const productosSnaps = await Promise.all(productosRefs.map(ref => tx.get(ref)))
 
-        const productoRef  = doc(db, 'productos', item.id)
-        const productoSnap = await tx.get(productoRef)
-        if (!productoSnap.exists()) throw new Error(`Producto no encontrado: ${item.nombre}`)
+      const snapshots = productosSnaps.map((snap, i) => {
+        if (!snap.exists()) throw new Error(`Producto no encontrado: ${items[i].nombre}`)
+        const stockActual = Number(snap.data()?.stock ?? 0)
+        const qty = Number(items[i].qty ?? 0)
+        if (stockActual < qty) throw new Error(`Stock insuficiente para ${items[i].nombre}`)
+        return { ref: productosRefs[i], stockActual, qty }
+      })
 
-        const stockActual = Number(productoSnap.data()?.stock ?? 0)
-        if (stockActual < qty) throw new Error(`Stock insuficiente para ${item.nombre}`)
-
-        tx.update(productoRef, {
+      // ── FASE 2: escrituras ───────────────────────────────────────────────
+      for (const { ref, stockActual, qty } of snapshots) {
+        tx.update(ref, {
           stock: parseFloat((stockActual - qty).toFixed(3)),
           ultima_actualizacion: serverTimestamp(),
         })
