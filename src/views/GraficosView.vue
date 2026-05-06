@@ -392,6 +392,15 @@ const FMT_QTY = '#,##0.###'
 const FMT_DATE = 'dd/mm/yyyy'
 const FMT_TIME = 'hh:mm'
 
+/**
+ * ExcelJS serializa Dates usando UTC. Para que la columna Hora muestre la hora
+ * local correctamente, creamos un Date cuyo UTC coincide con la hora local.
+ * Ej: 21:10 Argentina (UTC-3) → getTime()-(-180*60000) → Date UTC = 21:10 ✓
+ */
+function horaLocalParaExcel(d) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+}
+
 function descargarBlob(buffer, filename) {
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)
@@ -565,7 +574,7 @@ async function generarLibroVentas() {
 
     tickets.push({
       fecha: soloFecha,
-      hora: fecha,
+      hora: horaLocalParaExcel(fecha),
       items: items.length,
       subtotal, recargo, total,
       metodo, estado,
@@ -584,7 +593,7 @@ async function generarLibroVentas() {
       const sub = Number(item.subtotal ?? precio * qty)
       detalle.push({
         fecha: soloFecha,
-        hora: fecha,
+        hora: horaLocalParaExcel(fecha),
         producto: item.nombre || '',
         cantidad: qty,
         precio,
