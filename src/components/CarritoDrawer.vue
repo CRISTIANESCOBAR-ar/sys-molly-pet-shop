@@ -46,6 +46,7 @@ async function confirmarVenta() {
     exito.value = true
     setTimeout(() => { exito.value = false }, 2500)
   } catch (e) {
+    console.error('[CarritoDrawer] error al registrar venta:', e?.code, e?.message, e)
     if (esErrorRecuperable(e)) {
       syncQueueStore.addVenta({
         items:          ventasStore.carrito.map(i => ({ ...i })),

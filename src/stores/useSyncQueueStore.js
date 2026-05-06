@@ -24,10 +24,11 @@ function generateId() {
 export function esErrorRecuperable(e) {
   const msg  = (e?.message || '').toLowerCase()
   const code = (e?.code    || '').toLowerCase()
-  // Considerar como recuperables también errores de red/conn que pueden aparecer
-  // en distintos navegadores o versiones de Firebase (ej: 'Failed to fetch', 'net::ERR_FAILED',
-  // 'message port closed', 'closed before a response'). Esto permite guardar en cola
-  // operaciones y reintentarlas cuando la conectividad vuelva estable.
+
+  // Si no hay mensaje ni código es un error de transporte/canal de Firebase
+  // (Name: undefined Message: undefined) — siempre recuperable
+  if (!msg && !code) return true
+
   return (
     msg.includes('quota')  ||
     msg.includes('resource') ||
@@ -41,6 +42,7 @@ export function esErrorRecuperable(e) {
     msg.includes('net::err') ||
     msg.includes('network') ||
     msg.includes('connection') ||
+    msg.includes('transport') ||
     msg.includes('closed before a response') ||
     msg.includes('message port closed') ||
     code.includes('aborted') ||
