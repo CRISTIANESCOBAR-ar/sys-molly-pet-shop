@@ -100,22 +100,25 @@ export const useVentasStore = defineStore('ventas', () => {
     }))
 
     await runTransaction(db, async (tx) => {
+      // ── FASE 1: todas las lecturas primero (regla de Firestore transactions) ──
+      const snapshots = []
       for (const item of itemsVenta) {
         const qty = Number(item.qty ?? 0)
         if (!item.id || qty <= 0) throw new Error('Ítem de venta inválido')
-
         const productoRef = doc(db, 'productos', item.id)
         const productoSnap = await tx.get(productoRef)
         if (!productoSnap.exists()) throw new Error(`Producto no encontrado: ${item.nombre}`)
-
         const stockActual = Number(productoSnap.data()?.stock ?? 0)
         if (stockActual < qty) {
           throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${stockActual}`)
         }
+        snapshots.push({ ref: productoRef, stockActual, qty })
+      }
 
-        const nuevoStock = parseFloat((stockActual - qty).toFixed(3))
-        tx.update(productoRef, {
-          stock: nuevoStock,
+      // ── FASE 2: todas las escrituras después ──────────────────────────────
+      for (const { ref, stockActual, qty } of snapshots) {
+        tx.update(ref, {
+          stock: parseFloat((stockActual - qty).toFixed(3)),
           ultima_actualizacion: serverTimestamp(),
         })
       }
