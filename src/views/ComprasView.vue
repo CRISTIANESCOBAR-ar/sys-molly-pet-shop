@@ -120,92 +120,120 @@ const form = ref({
   proveedor:     '',
 })
 
-const busquedaProducto = ref('')
+const busquedaProducto   = ref('')
 const mostrarSugerencias = ref(false)
+// Producto resuelto (objeto completo). Es la fuente de verdad para el ID.
+const selectedProducto   = ref(null)
 
 const productosSugeridos = computed(() => {
   const q = busquedaProducto.value.trim().toLowerCase()
   if (!q || q.length < 2) return []
   return productosStore.productos
     .filter(p => p.nombre.toLowerCase().includes(q))
-    .slice(0, 6)
+    .slice(0, 8)
+})
+
+// ── Auto-resolución: si el texto coincide exactamente con un producto (sin
+//    importar mayúsculas), lo seleccionamos automáticamente sin necesitar clic.
+watch(busquedaProducto, (val) => {
+  const texto = val.trim().toUpperCase()
+  if (!texto) {
+    selectedProducto.value = null
+    form.value.nombre      = ''
+    return
+  }
+  const coincidencia = productosStore.productos.find(
+    p => p.nombre.trim().toUpperCase() === texto,
+  )
+  if (coincidencia) {
+    selectedProducto.value   = coincidencia
+    form.value.nombre        = coincidencia.nombre
+    // Solo pre-rellena precio_venta si el campo está vacío
+    if (!form.value.precio_venta) {
+      form.value.precio_venta = coincidencia.precio_venta ?? ''
+    }
+    if (!form.value.presentacion && coincidencia.presentacion) {
+      form.value.presentacion = coincidencia.presentacion
+    }
+  } else {
+    // El texto no coincide exactamente → producto no reconocido
+    selectedProducto.value = null
+    form.value.nombre      = val.trim()
+  }
 })
 
 function seleccionarProducto(prod) {
-  form.value.nombre       = prod.nombre
-  form.value.precio_venta = prod.precio_venta ?? ''
-  busquedaProducto.value  = prod.nombre
+  selectedProducto.value   = prod
+  form.value.nombre        = prod.nombre
+  form.value.precio_venta  = prod.precio_venta ?? ''
+  if (prod.presentacion) form.value.presentacion = prod.presentacion
+  busquedaProducto.value   = prod.nombre
   mostrarSugerencias.value = false
 }
 
 function ocultarSugerencias() {
-  setTimeout(() => mostrarSugerencias.value = false, 150)
+  setTimeout(() => { mostrarSugerencias.value = false }, 150)
 }
 
-const guardando  = ref(false)
-const exitoGuard = ref(false)
+const guardando   = ref(false)
+const exitoGuard  = ref(false)
 const enColaGuard = ref(false)
-const errorGuard = ref('')
+const errorGuard  = ref('')
 
+// El formulario es válido solo si:
+//  1. Hay un producto reconocido en la lista (selectedProducto no es null)
+//  2. La cantidad es positiva
+//  3. El precio de compra es positivo
 const puedeGuardar = computed(() =>
-  form.value.nombre.trim() &&
+  selectedProducto.value !== null &&
   form.value.cantidad > 0 &&
   Number(form.value.precio_compra) > 0,
 )
 
 async function guardarCompra() {
   if (!puedeGuardar.value || guardando.value) return
-  guardando.value = true
+  guardando.value  = true
   errorGuard.value = ''
   enColaGuard.value = false
-  try {
-    const productoCoincidente = productosStore.productos.find(
-      p => p.nombre.toUpperCase() === form.value.nombre.trim().toUpperCase(),
-    )
-    const compraData = {
-      nombre:        form.value.nombre,
-      cantidad:      Number(form.value.cantidad),
-      presentacion:  form.value.presentacion,
-      precio_compra: Number(form.value.precio_compra),
-      precio_venta:  Number(form.value.precio_venta) || 0,
-      proveedor:     form.value.proveedor,
-      producto_id:   productoCoincidente?.id || null,
-    }
 
-    await comprasStore.registrarCompra(compraData)
+  // selectedProducto ya fue resuelto por el watcher o por seleccionarProducto().
+  // Usamos su ID directamente — nunca hacemos un find() adicional aquí.
+  const prod = selectedProducto.value
 
-    // Reset form
+  const compraData = {
+    nombre:        prod.nombre,                           // nombre normalizado del store
+    cantidad:      Number(form.value.cantidad),
+    presentacion:  form.value.presentacion,
+    precio_compra: Number(form.value.precio_compra),
+    precio_venta:  Number(form.value.precio_venta) || 0,
+    proveedor:     form.value.proveedor,
+    producto_id:   prod.id,                              // ID confiable del store
+  }
+
+  function resetForm() {
     form.value = { nombre: '', cantidad: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
     busquedaProducto.value = ''
+    selectedProducto.value = null
+  }
+
+  try {
+    await comprasStore.registrarCompra(compraData)
+    resetForm()
     exitoGuard.value = true
     setTimeout(() => { exitoGuard.value = false }, 2500)
   } catch (e) {
     if (esErrorRecuperable(e)) {
-      const productoCoincidente = productosStore.productos.find(
-        p => p.nombre.toUpperCase() === form.value.nombre.trim().toUpperCase(),
-      )
-      syncQueueStore.addCompra({
-        nombre:        form.value.nombre,
-        cantidad:      Number(form.value.cantidad),
-        presentacion:  form.value.presentacion,
-        precio_compra: Number(form.value.precio_compra),
-        precio_venta:  Number(form.value.precio_venta) || 0,
-        proveedor:     form.value.proveedor,
-        producto_id:   productoCoincidente?.id || null,
-      })
-      form.value = { nombre: '', cantidad: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
-      busquedaProducto.value = ''
+      syncQueueStore.addCompra(compraData)
+      resetForm()
       enColaGuard.value = true
       setTimeout(() => { enColaGuard.value = false }, 6000)
     } else {
-      console.error('Error interno al registrar compra:', e)
+      console.error('Error al registrar compra:', e)
       const msg = (e.message || '').toLowerCase()
-      if (msg.includes('path') || msg.includes('undefined') || msg.includes('no se encontró')) {
-        errorGuard.value = 'Revisa que hayas seleccionado correctamente el producto de la lista.'
-      } else if (msg.includes('permission') || msg.includes('privilegios') || msg.includes('role')) {
+      if (msg.includes('permission') || msg.includes('privilegios') || msg.includes('role')) {
         errorGuard.value = 'Tu cuenta no tiene permisos para realizar esta acción.'
       } else {
-        errorGuard.value = 'Ocurrió un problema inesperado al guardar. Por favor, intentá nuevamente.'
+        errorGuard.value = 'Ocurrió un problema inesperado al guardar. Intentá nuevamente.'
       }
     }
   } finally {
@@ -316,15 +344,39 @@ async function eliminarCompra(compra) {
           <!-- Producto -->
           <div class="relative">
             <label class="block text-xs font-medium text-gray-500 mb-1">Producto</label>
-            <input
-              v-model="busquedaProducto"
-              @input="mostrarSugerencias = true; form.nombre = busquedaProducto"
-              @blur="ocultarSugerencias"
-              @focus="mostrarSugerencias = true"
-              type="text"
-              placeholder="Buscar o escribir nombre..."
-              class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-            />
+            <div class="relative">
+              <input
+                v-model="busquedaProducto"
+                @input="mostrarSugerencias = true"
+                @blur="ocultarSugerencias"
+                @focus="mostrarSugerencias = true"
+                type="text"
+                placeholder="Buscar o escribir nombre..."
+                :class="[
+                  'w-full px-3 py-2.5 pr-8 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-colors',
+                  busquedaProducto.trim()
+                    ? selectedProducto
+                      ? 'border-green-400 focus:ring-green-400 bg-green-50/40'
+                      : 'border-amber-300 focus:ring-amber-300 bg-amber-50/40'
+                    : 'border-gray-200 focus:ring-green-400',
+                ]"
+              />
+              <!-- Indicador de estado del producto -->
+              <span
+                v-if="busquedaProducto.trim()"
+                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                :title="selectedProducto ? 'Producto reconocido' : 'Escribí el nombre exacto o seleccioná de la lista'"
+              >
+                {{ selectedProducto ? '✓' : '!' }}
+              </span>
+            </div>
+            <!-- Mensaje de ayuda cuando el texto no coincide -->
+            <p
+              v-if="busquedaProducto.trim() && !selectedProducto"
+              class="text-xs text-amber-600 mt-1"
+            >
+              Seleccioná un producto de la lista o escribí el nombre exacto.
+            </p>
             <!-- Sugerencias -->
             <div
               v-if="mostrarSugerencias && productosSugeridos.length > 0"
