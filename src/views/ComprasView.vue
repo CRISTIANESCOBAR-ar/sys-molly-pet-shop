@@ -114,6 +114,7 @@ const tabActivo = ref('form') // 'form' | 'historial'
 const form = ref({
   nombre:        '',
   cantidad:      1,
+  multiplicador: 1,
   presentacion:  '',
   precio_compra: '',
   precio_venta:  '',
@@ -203,6 +204,7 @@ async function guardarCompra() {
   const compraData = {
     nombre:        prod.nombre,                           // nombre normalizado del store
     cantidad:      Number(form.value.cantidad),
+    multiplicador: Number(form.value.multiplicador) || 1,
     presentacion:  form.value.presentacion,
     precio_compra: Number(form.value.precio_compra),
     precio_venta:  Number(form.value.precio_venta) || 0,
@@ -211,7 +213,7 @@ async function guardarCompra() {
   }
 
   function resetForm() {
-    form.value = { nombre: '', cantidad: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
+    form.value = { nombre: '', cantidad: 1, multiplicador: 1, presentacion: '', precio_compra: '', precio_venta: '', proveedor: '' }
     busquedaProducto.value = ''
     selectedProducto.value = null
   }
@@ -247,6 +249,7 @@ const compraEditando           = ref(null)
 const formEditarCompra         = ref({
   nombre: '',
   cantidad: 1,
+  multiplicador: 1,
   presentacion: '',
   precio_compra: 0,
   precio_venta: 0,
@@ -260,6 +263,7 @@ function abrirEditarCompra(compra) {
   formEditarCompra.value = {
     nombre:        compra.nombre        ?? '',
     cantidad:      compra.cantidad      ?? 1,
+    multiplicador: compra.multiplicador ?? 1,
     presentacion:  compra.presentacion  ?? '',
     precio_compra: compra.precio_compra ?? 0,
     precio_venta:  compra.precio_venta  ?? 0,
@@ -293,6 +297,7 @@ async function guardarEdicionCompra() {
     const datos = {
       nombre:        String(formEditarCompra.value.nombre || compraEditando.value.nombre || '').trim().toUpperCase(),
       cantidad:      Number(formEditarCompra.value.cantidad),
+      multiplicador: Number(formEditarCompra.value.multiplicador) || 1,
       presentacion:  String(formEditarCompra.value.presentacion || '').trim(),
       precio_compra: Number(formEditarCompra.value.precio_compra),
       precio_venta:  Number(formEditarCompra.value.precio_venta),
@@ -394,10 +399,10 @@ async function eliminarCompra(compra) {
             </div>
           </div>
 
-          <!-- Cantidad + Presentación -->
-          <div class="grid grid-cols-2 gap-3">
+          <!-- Cantidad, Multiplicador, Presentación -->
+          <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1" title="Cantidad de bultos comprados">Cantidad</label>
               <input
                 v-model.number="form.cantidad"
                 type="number" min="1"
@@ -405,10 +410,18 @@ async function eliminarCompra(compra) {
               />
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Presentación</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1 truncate" title="Kilos o Unidades que trae cada bulto. Esto se multiplicará por la Cantidad para sumar al stock.">Kilos/Unid por bulto</label>
+              <input
+                v-model.number="form.multiplicador"
+                type="number" min="0.001" step="0.001"
+                class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1" title="Texto descriptivo para el historial (ej: 15 KG)">Presentación</label>
               <input
                 v-model="form.presentacion"
-                type="text" placeholder="ej: 20 KG"
+                type="text" placeholder="ej: 15 KG"
                 class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
@@ -556,7 +569,7 @@ async function eliminarCompra(compra) {
           <p class="text-lg font-bold text-gray-800 truncate">{{ compra.nombre }}</p>
           <div class="flex justify-between items-end mt-2">
             <div class="text-base text-gray-400 space-y-0.5">
-              <p>×{{ compra.cantidad }} {{ compra.presentacion }}</p>
+              <p>×{{ compra.cantidad }} {{ compra.presentacion }} <span v-if="compra.multiplicador && compra.multiplicador !== 1" class="text-sm font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded ml-1">Stock sumado: +{{ compra.cantidad * compra.multiplicador }}</span></p>
               <p>Compra: ${{ (compra.precio_compra ?? 0).toLocaleString('es-AR') }} · Venta: ${{ (compra.precio_venta ?? 0).toLocaleString('es-AR') }}</p>
             </div>
             <span class="text-xl font-bold text-gray-900">${{ (compra.total ?? 0).toLocaleString('es-AR') }}</span>
@@ -633,17 +646,22 @@ async function eliminarCompra(compra) {
               class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-green-400" />
           </div>
 
-          <!-- Cantidad + Presentación -->
-          <div class="grid grid-cols-2 gap-3">
+          <!-- Cantidad, Multiplicador, Presentación -->
+          <div class="grid grid-cols-3 gap-2">
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1" title="Cantidad de bultos comprados">Cantidad</label>
               <input v-model.number="formEditarCompra.cantidad" type="number" min="1"
-                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                class="w-full px-2 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-medium text-gray-500 mb-1 truncate" title="Kilos o Unidades que trae cada bulto.">Kg/Unid x bulto</label>
+              <input v-model.number="formEditarCompra.multiplicador" type="number" min="0.001" step="0.001"
+                class="w-full px-2 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-500 mb-1">Presentación</label>
-              <input v-model="formEditarCompra.presentacion" type="text" placeholder="ej: 20 KG"
-                class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              <input v-model="formEditarCompra.presentacion" type="text" placeholder="ej: 15 KG"
+                class="w-full px-2 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
             </div>
           </div>
 

@@ -109,7 +109,8 @@ export const useComprasStore = defineStore('compras', () => {
 
     const nombreNormalizado = data.nombre.trim().toUpperCase()
     const cantidad = Number(data.cantidad)
-    if (!nombreNormalizado || cantidad <= 0) throw new Error('Compra inválida')
+    const multiplicador = Number(data.multiplicador) || 1
+    if (!nombreNormalizado || cantidad <= 0 || multiplicador <= 0) throw new Error('Compra inválida')
 
     await runTransaction(db, async (tx) => {
       let productoRef = null
@@ -135,7 +136,8 @@ export const useComprasStore = defineStore('compras', () => {
 
       const productoSnap = await tx.get(productoRef)
       const stockActual = Number(productoSnap.data()?.stock ?? 0)
-      const nuevoStock = parseFloat((stockActual + cantidad).toFixed(3))
+      const cantidadStock = cantidad * multiplicador
+      const nuevoStock = parseFloat((stockActual + cantidadStock).toFixed(3))
       tx.update(productoRef, {
         stock: nuevoStock,
         precio_compra: Number(data.precio_compra),
@@ -148,6 +150,7 @@ export const useComprasStore = defineStore('compras', () => {
         fecha:         serverTimestamp(),
         nombre:        nombreNormalizado,
         cantidad,
+        multiplicador,
         presentacion:  data.presentacion || '',
         precio_compra: Number(data.precio_compra),
         precio_venta:  Number(data.precio_venta) || 0,
@@ -173,8 +176,14 @@ export const useComprasStore = defineStore('compras', () => {
 
       const compraActual = compraSnap.data() || {}
       const cantidadAnterior = Number(compraActual.cantidad ?? 0)
+      const multiplicadorAnterior = Number(compraActual.multiplicador || 1)
+      const stockAnterior = cantidadAnterior * multiplicadorAnterior
+
       const cantidadNueva = Number(data.cantidad ?? cantidadAnterior)
-      const deltaCantidad = parseFloat((cantidadNueva - cantidadAnterior).toFixed(3))
+      const multiplicadorNuevo = Number(data.multiplicador ?? multiplicadorAnterior)
+      const stockNuevo = cantidadNueva * multiplicadorNuevo
+
+      const deltaCantidad = parseFloat((stockNuevo - stockAnterior).toFixed(3))
 
       let productoRef = null
       if (compraActual.producto_id) {
@@ -254,9 +263,12 @@ export const useComprasStore = defineStore('compras', () => {
       if (!productoRef) throw new Error('No se encontró el producto para actualizar stock')
 
       const cantidad = Number(compra.cantidad ?? 0)
+      const multiplicador = Number(compra.multiplicador || 1)
+      const stockAgregado = cantidad * multiplicador
+
       const productoSnap = await tx.get(productoRef)
       const stockActual = Number(productoSnap.data()?.stock ?? 0)
-      const nuevoStock = parseFloat((stockActual - cantidad).toFixed(3))
+      const nuevoStock = parseFloat((stockActual - stockAgregado).toFixed(3))
       if (nuevoStock < 0) throw new Error('No hay stock suficiente para anular la compra')
 
       tx.update(productoRef, {
