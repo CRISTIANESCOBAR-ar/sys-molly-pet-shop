@@ -7,6 +7,7 @@ import { useProductosStore } from '@/stores/useProductosStore'
 import { useAuthStore }      from '@/stores/useAuthStore'
 import { useUsuariosStore }  from '@/stores/useUsuariosStore'
 import { METODOS_PAGO }      from '@/firebase/constants'
+import Swal from 'sweetalert2'
 
 const ventasStore    = useVentasStore()
 const productosStore = useProductosStore()
@@ -127,8 +128,17 @@ async function guardarEdicionVenta() {
 }
 
 async function eliminarVenta(venta) {
-  const ok = window.confirm(`¿Anular venta por $${Number(venta.total ?? 0).toLocaleString('es-AR')}?`)
-  if (!ok) return
+  const result = await Swal.fire({
+    title: '¿Estás seguro?',
+    text: `¿Anular venta por $${Number(venta.total ?? 0).toLocaleString('es-AR')}?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#ef4444',
+    confirmButtonText: 'Sí, anular',
+    cancelButtonText: 'Cancelar'
+  })
+  if (!result.isConfirmed) return
   await ventasStore.eliminarVenta(venta.id)
 }
 

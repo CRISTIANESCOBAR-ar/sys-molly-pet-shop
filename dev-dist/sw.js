@@ -67,10 +67,10 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-a068865c'], (function (workbox) { 'use strict';
+define(['./workbox-dfc419f6'], (function (workbox) { 'use strict';
 
   workbox.setCacheNameDetails({
-    prefix: "molly-1777216385134"
+    prefix: "molly-1781867709826"
   });
   self.skipWaiting();
   workbox.clientsClaim();
@@ -85,19 +85,13 @@ define(['./workbox-a068865c'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.pik2g4hkkd4"
+    "revision": "0.s6h8mtmlhgc"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^https:\/\/firestore\.googleapis\.com\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "firestore-cache",
-    "networkTimeoutSeconds": 10,
-    plugins: [new workbox.CacheableResponsePlugin({
-      statuses: [0, 200]
-    })]
-  }), 'GET');
+  workbox.registerRoute(/^https:\/\/firestore\.googleapis\.com\/.*/i, new workbox.NetworkOnly(), 'GET');
   workbox.registerRoute(/^https:\/\/firebasestorage\.googleapis\.com\/.*/i, new workbox.CacheFirst({
     "cacheName": "firebase-storage-cache",
     plugins: [new workbox.CacheableResponsePlugin({

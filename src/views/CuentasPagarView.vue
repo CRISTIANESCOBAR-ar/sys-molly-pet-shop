@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import NavBar from '@/components/NavBar.vue'
 import { useProveedoresStore } from '@/stores/useProveedoresStore'
+import Swal from 'sweetalert2'
 
 const proveedoresStore = useProveedoresStore()
 
@@ -59,7 +60,17 @@ async function guardarCuenta() {
 }
 
 async function marcarPagada(cuenta) {
-  if (!confirm(`¿Marcar como pagada la factura ${cuenta.nro_factura}?`)) return
+  const result = await Swal.fire({
+    title: '¿Confirmar pago?',
+    text: `¿Marcar como pagada la factura ${cuenta.nro_factura}?`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#9ca3af',
+    confirmButtonText: 'Sí, pagar',
+    cancelButtonText: 'Cancelar'
+  })
+  if (!result.isConfirmed) return
   await proveedoresStore.pagarCuenta(cuenta.id, cuenta.id_proveedor, cuenta.monto_total)
 }
 </script>

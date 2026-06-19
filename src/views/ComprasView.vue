@@ -6,6 +6,7 @@ import { useProductosStore } from '@/stores/useProductosStore'
 import { useProveedoresStore } from '@/stores/useProveedoresStore'
 import { useAuthStore }       from '@/stores/useAuthStore'
 import { useSyncQueueStore, esErrorRecuperable } from '@/stores/useSyncQueueStore'
+import Swal from 'sweetalert2'
 
 const comprasStore   = useComprasStore()
 const productosStore = useProductosStore()
@@ -121,7 +122,20 @@ const form = ref({
   proveedor:     '',
 })
 
-const busquedaProducto   = ref('')
+const unidadesASumar = computed(() => {
+  const cantidad = Number(form.value.cantidad || 0)
+  let factor = 1
+  if (form.value.presentacion) {
+    const match = String(form.value.presentacion).match(/([\d.,]+)/)
+    if (match) {
+      const parsed = parseFloat(match[1].replace(',', '.'))
+      if (!isNaN(parsed) && parsed > 0) factor = parsed
+    }
+  }
+  return parseFloat((cantidad * factor).toFixed(3))
+})
+
+const busquedaProducto = ref('')
 const mostrarSugerencias = ref(false)
 // Producto resuelto (objeto completo). Es la fuente de verdad para el ID.
 const selectedProducto   = ref(null)
@@ -258,6 +272,19 @@ const formEditarCompra         = ref({
 })
 const guardandoEdicion         = ref(false)
 
+const unidadesASumarEdicion = computed(() => {
+  const cantidad = Number(formEditarCompra.value.cantidad || 0)
+  let factor = 1
+  if (formEditarCompra.value.presentacion) {
+    const match = String(formEditarCompra.value.presentacion).match(/([\d.,]+)/)
+    if (match) {
+      const parsed = parseFloat(match[1].replace(',', '.'))
+      if (!isNaN(parsed) && parsed > 0) factor = parsed
+    }
+  }
+  return parseFloat((cantidad * factor).toFixed(3))
+})
+
 function abrirEditarCompra(compra) {
   compraEditando.value = compra
   formEditarCompra.value = {
@@ -314,8 +341,17 @@ async function guardarEdicionCompra() {
 }
 
 async function eliminarCompra(compra) {
-  const ok = window.confirm(`¿Eliminar compra de ${compra.nombre} por $${Number(compra.total ?? 0).toLocaleString('es-AR')}?`)
-  if (!ok) return
+  const result = await Swal.fire({
+    title: '¿Estás seguro?',
+    text: `¿Eliminar compra de ${compra.nombre} por $${Number(compra.total ?? 0).toLocaleString('es-AR')}?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#ef4444',
+    confirmButtonText: 'Sí, eliminar',
+    cancelButtonText: 'Cancelar'
+  })
+  if (!result.isConfirmed) return
   await comprasStore.eliminarCompra(compra.id)
 }
 </script>
@@ -471,6 +507,14 @@ async function eliminarCompra(compra) {
             <span class="text-sm text-gray-500">Total a pagar</span>
             <span class="text-base font-bold text-gray-900">
               ${{ (Number(form.precio_compra) * Number(form.cantidad)).toLocaleString('es-AR') }}
+            </span>
+          </div>
+          
+          <!-- Stock a ingresar preview -->
+          <div v-if="unidadesASumar > 0 && form.cantidad > 0" class="bg-blue-50 rounded-xl px-4 py-3 flex justify-between items-center">
+            <span class="text-sm text-blue-700">Stock a ingresar</span>
+            <span class="text-base font-bold text-blue-900">
+              +{{ unidadesASumar }} {{ unidadesASumar === 1 ? 'unidad' : 'unidades' }}
             </span>
           </div>
 
@@ -706,8 +750,14 @@ async function eliminarCompra(compra) {
 
           <!-- Total -->
           <div class="bg-gray-50 rounded-lg px-3 py-2 flex justify-between text-sm">
-            <span class="text-gray-500">Total</span>
+            <span class="text-gray-500">Total a pagar</span>
             <span class="font-bold text-gray-900">${{ (formEditarCompra.precio_compra * formEditarCompra.cantidad).toLocaleString('es-AR') }}</span>
+          </div>
+
+          <!-- Stock a ingresar -->
+          <div class="bg-blue-50 rounded-lg px-3 py-2 flex justify-between text-sm mt-1">
+            <span class="text-blue-700">Stock a ingresar</span>
+            <span class="font-bold text-blue-900">+{{ unidadesASumarEdicion }} {{ unidadesASumarEdicion === 1 ? 'unidad' : 'unidades' }}</span>
           </div>
 
         </div>

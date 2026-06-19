@@ -102,6 +102,16 @@ export const useComprasStore = defineStore('compras', () => {
     }
   }
 
+  function parsePresentacionFactor(presentacionStr) {
+    if (!presentacionStr) return 1
+    const match = String(presentacionStr).match(/([\d.,]+)/)
+    if (match) {
+      const parsed = parseFloat(match[1].replace(',', '.'))
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    return 1
+  }
+
   // ─── Registrar nueva compra ───────────────────────────────────────────────
   async function registrarCompra(data) {
     const authStore = useAuthStore()
@@ -111,6 +121,11 @@ export const useComprasStore = defineStore('compras', () => {
     const cantidad = Number(data.cantidad)
     const multiplicador = Number(data.multiplicador) || 1
     if (!nombreNormalizado || cantidad <= 0 || multiplicador <= 0) throw new Error('Compra inválida')
+
+    const factor = parsePresentacionFactor(data.presentacion)
+    const stockAIncrementar = cantidad * factor
+
+    const compraRef = doc(collection(db, 'compras'))
 
     await runTransaction(db, async (tx) => {
       let productoRef = null
@@ -136,8 +151,7 @@ export const useComprasStore = defineStore('compras', () => {
 
       const productoSnap = await tx.get(productoRef)
       const stockActual = Number(productoSnap.data()?.stock ?? 0)
-      const cantidadStock = cantidad * multiplicador
-      const nuevoStock = parseFloat((stockActual + cantidadStock).toFixed(3))
+      const nuevoStock = parseFloat((stockActual + stockAIncrementar).toFixed(3))
       tx.update(productoRef, {
         stock: nuevoStock,
         precio_compra: Number(data.precio_compra),
@@ -145,7 +159,6 @@ export const useComprasStore = defineStore('compras', () => {
         ultima_actualizacion: serverTimestamp(),
       })
 
-      const compraRef = doc(collection(db, 'compras'))
       tx.set(compraRef, {
         fecha:         serverTimestamp(),
         nombre:        nombreNormalizado,
@@ -164,11 +177,32 @@ export const useComprasStore = defineStore('compras', () => {
     })
     metrics.trackReadEstimate('compras.registrarCompra.tx', 1)
     metrics.trackWriteEstimate('compras.registrarCompra.tx', 2)
+
+    // Insertar localmente en memoria
+    const ahora = new Date()
+    compras.value.unshift({
+      id:            compraRef.id,
+      fecha:         Timestamp.fromDate(ahora),
+      nombre:        nombreNormalizado,
+      cantidad,
+      presentacion:  data.presentacion || '',
+      precio_compra: Number(data.precio_compra),
+      precio_venta:  Number(data.precio_venta) || 0,
+      total:         Number(data.precio_compra) * cantidad,
+      proveedor:     (data.proveedor || '').toUpperCase(),
+      id_usuario:    authStore.user?.uid || null,
+      usuario_email: authStore.user?.email || null,
+      origen:        'manual',
+      producto_id:   data.producto_id || null,
+      estado:        'activa',
+    })
   }
 
   async function actualizarCompra(id, data) {
     const authStore = useAuthStore()
     const metrics = useUsageMetricsStore()
+    let productoIdFinal = null
+
     await runTransaction(db, async (tx) => {
       const compraRef = doc(db, 'compras', id)
       const compraSnap = await tx.get(compraRef)
@@ -176,14 +210,16 @@ export const useComprasStore = defineStore('compras', () => {
 
       const compraActual = compraSnap.data() || {}
       const cantidadAnterior = Number(compraActual.cantidad ?? 0)
-      const multiplicadorAnterior = Number(compraActual.multiplicador || 1)
-      const stockAnterior = cantidadAnterior * multiplicadorAnterior
+      const factorAnterior = parsePresentacionFactor(compraActual.presentacion)
 
       const cantidadNueva = Number(data.cantidad ?? cantidadAnterior)
-      const multiplicadorNuevo = Number(data.multiplicador ?? multiplicadorAnterior)
-      const stockNuevo = cantidadNueva * multiplicadorNuevo
-
-      const deltaCantidad = parseFloat((stockNuevo - stockAnterior).toFixed(3))
+      const factorNuevo = data.presentacion !== undefined 
+        ? parsePresentacionFactor(data.presentacion) 
+        : factorAnterior
+        
+      const stockAportadoAnteriormente = cantidadAnterior * factorAnterior
+      const stockAportadoNuevo = cantidadNueva * factorNuevo
+      const deltaCantidad = parseFloat((stockAportadoNuevo - stockAportadoAnteriormente).toFixed(3))
 
       let productoRef = null
       if (compraActual.producto_id) {
@@ -219,6 +255,8 @@ export const useComprasStore = defineStore('compras', () => {
         ultima_actualizacion: serverTimestamp(),
       })
 
+      productoIdFinal = productoRef.id
+
       tx.update(compraRef, {
         ...data,
         total:         Number(data.precio_compra ?? compraActual.precio_compra ?? 0) * cantidadNueva,
@@ -230,6 +268,20 @@ export const useComprasStore = defineStore('compras', () => {
     })
     metrics.trackReadEstimate('compras.actualizarCompra.tx', 2)
     metrics.trackWriteEstimate('compras.actualizarCompra.tx', 2)
+
+    // Actualizar localmente en memoria
+    const idx = compras.value.findIndex(c => c.id === id)
+    if (idx !== -1) {
+      const c = compras.value[idx]
+      const cantidadNueva = Number(data.cantidad ?? c.cantidad)
+      const precioCompraNuevo = Number(data.precio_compra ?? c.precio_compra)
+      compras.value[idx] = {
+        ...c,
+        ...data,
+        total: precioCompraNuevo * cantidadNueva,
+        producto_id: productoIdFinal || c.producto_id,
+      }
+    }
   }
 
   async function eliminarCompra(id) {
@@ -263,12 +315,12 @@ export const useComprasStore = defineStore('compras', () => {
       if (!productoRef) throw new Error('No se encontró el producto para actualizar stock')
 
       const cantidad = Number(compra.cantidad ?? 0)
-      const multiplicador = Number(compra.multiplicador || 1)
-      const stockAgregado = cantidad * multiplicador
-
+      const factor = parsePresentacionFactor(compra.presentacion)
+      const stockADescontar = cantidad * factor
+      
       const productoSnap = await tx.get(productoRef)
       const stockActual = Number(productoSnap.data()?.stock ?? 0)
-      const nuevoStock = parseFloat((stockActual - stockAgregado).toFixed(3))
+      const nuevoStock = parseFloat((stockActual - stockADescontar).toFixed(3))
       if (nuevoStock < 0) throw new Error('No hay stock suficiente para anular la compra')
 
       tx.update(productoRef, {
@@ -285,6 +337,15 @@ export const useComprasStore = defineStore('compras', () => {
     })
     metrics.trackReadEstimate('compras.eliminarCompra.tx', 2)
     metrics.trackWriteEstimate('compras.eliminarCompra.tx', 2)
+
+    // Actualizar localmente en memoria
+    const idx = compras.value.findIndex(c => c.id === id)
+    if (idx !== -1) {
+      compras.value[idx] = {
+        ...compras.value[idx],
+        estado: 'anulada',
+      }
+    }
   }
 
   return {

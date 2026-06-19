@@ -99,6 +99,9 @@ export const useVentasStore = defineStore('ventas', () => {
       precio: Number(i.precio ?? 0),
     }))
 
+    let ventaRefId = null
+    const ventaPayloadLocal = {}
+
     await runTransaction(db, async (tx) => {
       // ── FASE 1: lecturas en paralelo ─────────────────────────────────────
       const productosRefs = itemsVenta.map(item => {
@@ -124,8 +127,9 @@ export const useVentasStore = defineStore('ventas', () => {
       }
 
       const ventaRef = doc(collection(db, 'ventas'))
-      tx.set(ventaRef, {
-        fecha:          serverTimestamp(),
+      ventaRefId = ventaRef.id
+      
+      Object.assign(ventaPayloadLocal, {
         items:          itemsVenta,
         subtotal:       subtotal.value,
         recargo_metodo: recargoMetodo.value,
@@ -135,24 +139,28 @@ export const useVentasStore = defineStore('ventas', () => {
         usuario_email:  authStore.user?.email || null,
         estado:         'activa',
       })
+      
+      tx.set(ventaRef, {
+        fecha: serverTimestamp(),
+        ...ventaPayloadLocal
+      })
     })
     metrics.trackReadEstimate('ventas.registrarVenta.tx', itemsVenta.length)
     metrics.trackWriteEstimate('ventas.registrarVenta.tx', itemsVenta.length + 1)
 
-    // Agregar la nueva venta al historial local inmediatamente (sin recargar Firestore)
-    const ahora = new Date()
-    ventas.value.unshift({
-      id: `local-${Date.now()}`,
-      fecha: { toDate: () => ahora },
-      items: itemsVenta,
-      subtotal: subtotal.value,
-      recargo_metodo: recargoMetodo.value,
-      total: total.value,
-      metodo_pago: metodoPago.value,
-      id_usuario: authStore.user?.uid,
-      usuario_email: authStore.user?.email || null,
-      estado: 'activa',
-    })
+    // Insertar localmente en memoria
+    if (ventaRefId) {
+      console.log('[VentasStore] Unshifting new venta:', ventaRefId)
+      ventas.value = [
+        {
+          id: ventaRefId,
+          fecha: Timestamp.fromDate(new Date()),
+          ...ventaPayloadLocal
+        },
+        ...ventas.value
+      ]
+      console.log('[VentasStore] Ventas length is now:', ventas.value.length)
+    }
 
     limpiarCarrito()
   }
@@ -160,6 +168,8 @@ export const useVentasStore = defineStore('ventas', () => {
   async function actualizarVenta(id, data) {
     const authStore = useAuthStore()
     const metrics = useUsageMetricsStore()
+    let payloadFinal = null
+
     await runTransaction(db, async (tx) => {
       const ventaRef = doc(db, 'ventas', id)
       const ventaSnap = await tx.get(ventaRef)
@@ -230,9 +240,24 @@ export const useVentasStore = defineStore('ventas', () => {
         editado_por: authStore.user?.uid || null,
         editado_por_email: authStore.user?.email || null,
       })
+      payloadFinal = payload
     })
     metrics.trackReadEstimate('ventas.actualizarVenta.tx', 1)
     metrics.trackWriteEstimate('ventas.actualizarVenta.tx', 1)
+
+    // Actualizar localmente en memoria
+    if (payloadFinal) {
+      console.log('[VentasStore] Updating venta locally:', id)
+      const idx = ventas.value.findIndex(v => v.id === id)
+      if (idx !== -1) {
+        const newArray = [...ventas.value]
+        newArray[idx] = {
+          ...newArray[idx],
+          ...payloadFinal,
+        }
+        ventas.value = newArray
+      }
+    }
   }
 
   // ─── Registro desde cola offline ─────────────────────────────────────────
@@ -240,6 +265,9 @@ export const useVentasStore = defineStore('ventas', () => {
     const authStore = useAuthStore()
     const metrics = useUsageMetricsStore()
     const { items, metodo_pago, subtotal: sub, recargo_metodo, total: tot } = payload
+
+    let ventaRefId = null
+    const payloadLocal = {}
 
     await runTransaction(db, async (tx) => {
       // ── FASE 1: lecturas en paralelo ─────────────────────────────────────
@@ -266,8 +294,9 @@ export const useVentasStore = defineStore('ventas', () => {
       }
 
       const ventaRef = doc(collection(db, 'ventas'))
-      tx.set(ventaRef, {
-        fecha:          serverTimestamp(),
+      ventaRefId = ventaRef.id
+
+      Object.assign(payloadLocal, {
         items,
         subtotal:       Number(sub) || 0,
         recargo_metodo: Number(recargo_metodo) || 0,
@@ -277,9 +306,27 @@ export const useVentasStore = defineStore('ventas', () => {
         estado:         'activa',
         origen:         'offline_queue',
       })
+
+      tx.set(ventaRef, {
+        fecha: serverTimestamp(),
+        ...payloadLocal
+      })
     })
     metrics.trackReadEstimate('ventas.registrarVentaDesdePayload.tx', items.length)
     metrics.trackWriteEstimate('ventas.registrarVentaDesdePayload.tx', items.length + 1)
+
+    // Insertar localmente en memoria
+    if (ventaRefId) {
+      console.log('[VentasStore] Unshifting offline venta:', ventaRefId)
+      ventas.value = [
+        {
+          id: ventaRefId,
+          fecha: Timestamp.fromDate(new Date()),
+          ...payloadLocal
+        },
+        ...ventas.value
+      ]
+    }
   }
 
   async function eliminarVenta(id) {
@@ -319,6 +366,18 @@ export const useVentasStore = defineStore('ventas', () => {
     })
     metrics.trackReadEstimate('ventas.eliminarVenta.tx', 1)
     metrics.trackWriteEstimate('ventas.eliminarVenta.tx', 1)
+
+    // Actualizar localmente en memoria
+    console.log('[VentasStore] Eliminando venta locally:', id)
+    const idx = ventas.value.findIndex(v => v.id === id)
+    if (idx !== -1) {
+      const newArray = [...ventas.value]
+      newArray[idx] = {
+        ...newArray[idx],
+        estado: 'anulada',
+      }
+      ventas.value = newArray
+    }
   }
 
   // ─── Listener en tiempo real (últimas 50 ventas) ──────────────────────────

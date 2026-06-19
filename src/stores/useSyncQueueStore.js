@@ -101,6 +101,19 @@ export const useSyncQueueStore = defineStore('syncQueue', () => {
     queue.value = queue.value.filter(i => i.status !== 'error')
   }
 
+  function retryErrors() {
+    const tieneErrores = queue.value.some(i => i.status === 'error')
+    if (tieneErrores) {
+      queue.value = queue.value.map(i => {
+        if (i.status === 'error') {
+          return { ...i, status: 'pending', retries: 0 }
+        }
+        return i
+      })
+      processQueue()
+    }
+  }
+
   // ─── Procesamiento ────────────────────────────────────────────────────────
   async function processQueue() {
     if (isSyncing.value || !navigator.onLine) return
@@ -152,6 +165,10 @@ export const useSyncQueueStore = defineStore('syncQueue', () => {
 
   // ─── Inicialización (llamar una vez al montar la app) ─────────────────────
   function init() {
+    // Al montar la app, si hay errores de sincronización previos, los restablecemos
+    // automáticamente a pendientes para intentar subirlos de nuevo con la nueva versión
+    retryErrors()
+
     // Reintentar al recuperar conexión
     window.addEventListener('online', () => {
       setTimeout(processQueue, 1500)
@@ -179,6 +196,7 @@ export const useSyncQueueStore = defineStore('syncQueue', () => {
     addCompra,
     removeItem,
     clearErrors,
+    retryErrors,
     processQueue,
     init,
   }
