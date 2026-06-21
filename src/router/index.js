@@ -9,6 +9,7 @@ import ComprasView from '@/views/ComprasView.vue'
 import GraficosView from '@/views/GraficosView.vue'
 import MetricasLecturaView from '@/views/MetricasLecturaView.vue'
 import UsuariosView from '@/views/UsuariosView.vue'
+import ConciliacionView from '@/views/ConciliacionView.vue'
 
 const routes = [
   {
@@ -25,6 +26,12 @@ const routes = [
     path: '/ventas',
     name: 'Ventas',
     component: VentasView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/conciliacion',
+    name: 'Conciliacion',
+    component: ConciliacionView,
     meta: { requiresAuth: true },
   },
   {

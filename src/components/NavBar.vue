@@ -18,6 +18,7 @@ const menuAbierto = ref(false)
 const todosItems = [
   { path: '/ventas',        label: 'Ventas',      icon: '🛒', admin: false, importante: true },
   { path: '/stock',         label: 'Stock',       icon: '📦', admin: false, importante: true },
+  { path: '/conciliacion',  label: 'Conciliacion',icon: '⚖️', admin: false, importante: true },
   { path: '/compras',       label: 'Compras',     icon: '🛍️', admin: true,  importante: true },
   { path: '/cuentas-pagar', label: 'Cuentas',     icon: '💰', admin: true,  importante: true },
   { path: '/graficos',      label: 'Graficos',    icon: '📈', admin: false, importante: false },
